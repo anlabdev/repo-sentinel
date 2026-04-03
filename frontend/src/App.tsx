@@ -2,6 +2,7 @@ import { useState } from "react";
 import { AppShell } from "./components/AppShell.js";
 import { useRepoSentinelApp } from "./hooks/useRepoSentinelApp.js";
 import { AnalyticsPage } from "./pages/AnalyticsPage.js";
+import { HelpPage } from "./pages/HelpPage.js";
 import { HistoryPage } from "./pages/HistoryPage.js";
 import { LiveScanPage } from "./pages/LiveScanPage.js";
 import { NewScanPage } from "./pages/NewScanPage.js";
@@ -33,8 +34,10 @@ export function App() {
       setLanguage={app.setLanguage}
       copy={app.copy}
       totalScanned={app.stats.totalScanned}
+      scans={app.scans}
+      onOpenScanCommand={(id) => openScan(id, true)}
     >
-      <div className={`rs-page ${tab === "live" ? "rs-page-live" : ""}`.trim()}>
+      <div className={`rs-page ${tab === "live" ? "rs-page-live" : ""} ${tab === "history" ? "rs-page-history" : ""}`.trim()}>
         {app.error ? <div className="rs-error">{app.error}</div> : null}
 
         {tab === "overview" && app.settings ? (
@@ -73,6 +76,7 @@ export function App() {
         {tab === "analytics" ? <AnalyticsPage scans={app.scans} selectedScan={app.selectedScan} onSelectScan={(id) => openScan(id, false)} onOpenLive={(id) => openScan(id, true)} copy={app.copy} language={app.language} /> : null}
         {tab === "history" ? <HistoryPage scans={app.filteredScans} query={app.query} setQuery={app.setQuery} onDeleteAll={app.deleteAllScans} onOpen={openScan} onRescan={app.rescan} onDelete={app.deleteScan} copy={app.copy} language={app.language} /> : null}
         {tab === "settings" && app.settings ? <SettingsPage settings={app.settings} saving={app.saving} settingsDirty={app.settingsDirty} setSettings={app.setSettings} saveCurrentSettings={app.saveCurrentSettings} resetSettings={app.resetSettings} validateAiSettings={app.validateAiSettings} validatingAi={app.validatingAi} copy={app.copy} /> : null}
+        {tab === "help" ? <HelpPage copy={app.copy} language={app.language} /> : null}
       </div>
     </AppShell>
   );

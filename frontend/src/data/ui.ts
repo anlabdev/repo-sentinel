@@ -7,7 +7,8 @@ export const NAV_ITEMS: Array<{ id: Tab; label: string; icon: IconName }> = [
   { id: "live", label: "Live Scan", icon: "scan" },
   { id: "analytics", label: "Analytics", icon: "activity" },
   { id: "history", label: "History", icon: "history" },
-  { id: "settings", label: "Settings", icon: "settings" }
+  { id: "settings", label: "Settings", icon: "settings" },
+  { id: "help", label: "Help", icon: "help" }
 ];
 
 export const COPY = {
@@ -18,10 +19,12 @@ export const COPY = {
     navAnalytics: "Thống kê",
     navHistory: "Lịch sử",
     navSettings: "Cài đặt",
+    navHelp: "Trợ giúp",
     securityOperations: "Trung tâm bảo mật",
     reposScanned: "kho mã đã quét",
     lastSync: "Đồng bộ",
     justNow: "vừa xong",
+    commandLabel: "Lệnh nhanh",
     loading: "RepoSentinel đang khởi động...",
     initError: "Không thể khởi tạo ứng dụng.",
     startScanError: "Không thể bắt đầu quét kho mã.",
@@ -146,7 +149,9 @@ export const COPY = {
     filterHighRisk: "Rủi ro cao",
     exportTokenCsv: "Xuất CSV token",
     categoryAll: "Tất cả nhóm",
-    categoryFilter: "Lọc theo nhóm"
+    categoryFilter: "Lọc theo nhóm",
+    helpTitle: "Trợ giúp",
+    helpCommandHint: "Mẹo: Ctrl + K mở lệnh nhanh. /h để mở trợ giúp, /hs để tìm trong lịch sử scan."
   },
   en: {
     navOverview: "Overview",
@@ -155,10 +160,12 @@ export const COPY = {
     navAnalytics: "Analytics",
     navHistory: "History",
     navSettings: "Settings",
+    navHelp: "Help",
     securityOperations: "Security Operations",
     reposScanned: "repos scanned",
     lastSync: "Last sync",
     justNow: "just now",
+    commandLabel: "Command",
     loading: "RepoSentinel is loading...",
     initError: "Could not initialize the app.",
     startScanError: "Could not start the scan.",
@@ -283,7 +290,9 @@ export const COPY = {
     filterHighRisk: "High risk",
     exportTokenCsv: "Export token CSV",
     categoryAll: "All categories",
-    categoryFilter: "Filter by category"
+    categoryFilter: "Filter by category",
+    helpTitle: "Help",
+    helpCommandHint: "Tip: Ctrl + K opens quick command. Use /h for help and /hs to search scan history."
   }
 } as const;
 

@@ -1,6 +1,6 @@
 import type { RepositoryFetchMode } from "../../../shared/src/index.js";
 
-export type Tab = "overview" | "scan" | "live" | "analytics" | "history" | "settings";
+export type Tab = "overview" | "scan" | "live" | "analytics" | "history" | "settings" | "help";
 
 export type IconName =
   | "shield"
@@ -9,6 +9,7 @@ export type IconName =
   | "scan"
   | "history"
   | "settings"
+  | "help"
   | "alert"
   | "sparkles"
   | "play"

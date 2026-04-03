@@ -1,5 +1,5 @@
 import type { UiLanguage } from "../../../shared/src/index.js";
-import type { CopySet, } from "../data/ui.js";
+import type { CopySet } from "../data/ui.js";
 import type { IconName, Tab } from "../types/ui.js";
 
 export function statusLabel(value: string, language: UiLanguage = "en") {
@@ -93,6 +93,7 @@ export function navLabel(tab: Tab, copy: CopySet) {
   if (tab === "live") return copy.navLive;
   if (tab === "analytics") return copy.navAnalytics;
   if (tab === "history") return copy.navHistory;
+  if (tab === "help") return copy.navHelp;
   return copy.navSettings;
 }
 

@@ -12,7 +12,7 @@ export function HistoryPanel({ scans, query, setQuery, onDeleteAll, onOpen, onRe
   const hiddenCount = compact ? Math.max(0, scans.length - visibleScans.length) : 0;
 
   return (
-    <section className="rs-panel">
+    <section className={`rs-panel ${compact ? "" : "rs-history-panel-full"}`.trim()}>
       <div className="rs-panel-header rs-panel-header-split">
         <span><Icon name="history" />{copy.scanHistory} <small>({scans.length})</small></span>
         <div className="rs-badges"><b>{clean} {language === "vi" ? "an toàn" : "clean"}</b><b className="danger">{flagged} {language === "vi" ? "bị gắn cờ" : "flagged"}</b></div>
