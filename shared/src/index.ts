@@ -241,6 +241,7 @@ export interface ScanRequest {
   repoUrl: string;
   branch?: string;
   allowAi?: boolean;
+  confirmBudgetOverride?: boolean;
   fetchMode?: RepositoryFetchMode;
   language?: UiLanguage;
   uploadedArchive?: {
@@ -256,8 +257,11 @@ export interface Settings {
   suspicionThreshold: number;
   enableOpenAi: boolean;
   openAiModel: string;
+  parallelScans: number;
+  scanRetentionLimit: number;
   aiTokenLimit: number;
   aiTokenWarningPercent: number;
+  findingAllowlist: string[];
   scannerToggles: {
     builtIn: boolean;
     semgrep: boolean;
@@ -343,3 +347,4 @@ export interface HealthResponse {
   timestamp: string;
   version: string;
 }
+

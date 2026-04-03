@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { DashboardResponse, SettingsResponse, UiLanguage, ScanReport } from "../../../shared/src/index.js";
+import type { DashboardResponse, Finding, SettingsResponse, UiLanguage, ScanReport } from "../../../shared/src/index.js";
 import { api, type AiExplanationResponse, type ScanListItem } from "../api/client.js";
 import { COPY, INITIAL_FORM_STATE } from "../data/ui.js";
 import type { FormState, OverviewStatsValue } from "../types/ui.js";
@@ -19,6 +19,7 @@ export function useRepoSentinelApp() {
     return window.localStorage.getItem("rs-language") === "en" ? "en" : "vi";
   });
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ message: string; tone: "success" | "warning" } | null>(null);
   const [query, setQuery] = useState("");
   const [showLargestFiles, setShowLargestFiles] = useState(() => {
     if (typeof window === "undefined") return true;
@@ -29,6 +30,8 @@ export function useRepoSentinelApp() {
   const [findingExplanations, setFindingExplanations] = useState<Record<string, AiExplanationResponse>>({});
   const [findingExplainLoading, setFindingExplainLoading] = useState<Record<string, boolean>>({});
   const [retryingAiReview, setRetryingAiReview] = useState(false);
+  const [savingAllowlistRule, setSavingAllowlistRule] = useState<string | null>(null);
+  const [highlightedAllowlistRule, setHighlightedAllowlistRule] = useState<string | null>(null);
   const streamRef = useRef<EventSource | null>(null);
 
   const copy = COPY[language];
@@ -69,6 +72,12 @@ export function useRepoSentinelApp() {
   }, [showLargestFiles]);
 
   useEffect(() => {
+    if (!notice || typeof window === "undefined") return;
+    const timer = window.setTimeout(() => setNotice((current) => current?.message === notice.message ? null : current), 2200);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
+  useEffect(() => {
     setFindingExplanations({});
     setFindingExplainLoading({});
     setSelectedFindingId((current) => (selectedScan?.findings.some((finding) => finding.id === current) ? current : selectedScan?.findings[0]?.id ?? null));
@@ -79,11 +88,11 @@ export function useRepoSentinelApp() {
     void explainFindingDetail(selectedFindingId);
   }, [selectedScan, selectedFindingId, findingExplanations, findingExplainLoading, language]);
 
-  async function explainFindingDetail(findingId: string, force = false) {
+  async function explainFindingDetail(findingId: string, force = false, confirmBudgetOverride = false) {
     if (!selectedScan) return;
     try {
       setFindingExplainLoading((current) => ({ ...current, [findingId]: true }));
-      const explanation = await api.explainFinding(selectedScan.id, { findingId, language, force });
+      const explanation = await api.explainFinding(selectedScan.id, { findingId, language, force, confirmBudgetOverride });
       setFindingExplanations((current) => ({ ...current, [findingId]: explanation }));
     } catch (err) {
       setFindingExplanations((current) => ({
@@ -106,12 +115,28 @@ export function useRepoSentinelApp() {
 
   function retryFindingDetail() {
     if (!selectedFindingId) return;
+    const confirmBudgetOverride = settings?.openAi.budget.status !== "ok";
+    if (confirmBudgetOverride && !confirmAiBudgetUsage()) {
+      setFindingExplanations((current) => ({
+        ...current,
+        [selectedFindingId]: {
+          model: "unavailable",
+          language,
+          summary: copy.aiDisabledForThisAction,
+          explanation: copy.aiDisabledForThisAction,
+          confidence: 0,
+          recommendedAction: language === "vi" ? "Tiếp tục xem finding theo luật định sẵn hoặc tăng budget token nếu cần AI." : "Continue with deterministic review or raise the AI token budget if you need AI.",
+          scope: "finding"
+        }
+      }));
+      return;
+    }
     setFindingExplanations((current) => {
       const next = { ...current };
       delete next[selectedFindingId];
       return next;
     });
-    void explainFindingDetail(selectedFindingId, true);
+    void explainFindingDetail(selectedFindingId, true, confirmBudgetOverride);
   }
 
   async function retrySelectedScanAiReview() {
@@ -119,11 +144,12 @@ export function useRepoSentinelApp() {
     try {
       setRetryingAiReview(true);
       setError(null);
-      if (!confirmAiBudgetUsage()) {
+      const confirmBudgetOverride = settings?.openAi.budget.status !== "ok";
+      if (confirmBudgetOverride && !confirmAiBudgetUsage()) {
         setError(copy.aiDisabledForThisAction);
         return;
       }
-      const next = await api.retryAiReview(selectedScan.id, { language });
+      const next = await api.retryAiReview(selectedScan.id, { language, confirmBudgetOverride });
       setSelectedScan(next);
       await refreshWorkspace();
     } catch (err) {
@@ -208,7 +234,8 @@ export function useRepoSentinelApp() {
         throw new Error(language === "vi" ? "Hãy chọn file .zip trước khi quét." : "Choose a .zip file before scanning.");
       }
       let allowAi = form.allowAi;
-      if (allowAi && !confirmAiBudgetUsage()) {
+      const confirmBudgetOverride = allowAi && settings?.openAi.budget.status !== "ok";
+      if (confirmBudgetOverride && !confirmAiBudgetUsage()) {
         allowAi = false;
         setError(copy.aiDisabledForThisAction);
       }
@@ -216,11 +243,13 @@ export function useRepoSentinelApp() {
         ? await api.uploadScan(form.uploadFile as File, {
             repoName: form.repoUrl.trim() || form.uploadFile?.name.replace(/\.zip$/i, ""),
             allowAi,
+            confirmBudgetOverride: allowAi && confirmBudgetOverride,
             language
           })
         : await api.createScan({
             repoUrl: form.repoUrl,
             allowAi,
+            confirmBudgetOverride: allowAi && confirmBudgetOverride,
             fetchMode: form.fetchMode,
             language
           });
@@ -239,7 +268,8 @@ export function useRepoSentinelApp() {
     try {
       setError(null);
       let allowAi = scan.aiEscalated;
-      if (allowAi && !confirmAiBudgetUsage()) {
+      const confirmBudgetOverride = allowAi && settings?.openAi.budget.status !== "ok";
+      if (confirmBudgetOverride && !confirmAiBudgetUsage()) {
         allowAi = false;
         setError(copy.aiDisabledForThisAction);
       }
@@ -247,6 +277,7 @@ export function useRepoSentinelApp() {
         repoUrl: scan.repoUrl,
         ...(scan.branch ? { branch: scan.branch } : {}),
         allowAi,
+        confirmBudgetOverride: allowAi && confirmBudgetOverride,
         fetchMode: scan.sourceMode ?? "clone",
         language
       });
@@ -326,8 +357,11 @@ export function useRepoSentinelApp() {
         suspicionThreshold: settings.suspicionThreshold,
         enableOpenAi: settings.enableOpenAi,
         openAiModel: settings.openAiModel,
+        parallelScans: settings.parallelScans,
+        scanRetentionLimit: settings.scanRetentionLimit,
         aiTokenLimit: settings.aiTokenLimit,
         aiTokenWarningPercent: settings.aiTokenWarningPercent,
+        findingAllowlist: settings.findingAllowlist,
         openAiApiKey: apiKeyInput === undefined ? undefined : apiKeyInput.trim(),
         scannerToggles: settings.scannerToggles
       });
@@ -345,6 +379,47 @@ export function useRepoSentinelApp() {
     setSettings(savedSettingsSnapshot);
   }
 
+  function buildFindingAllowlistRule(finding: Finding) {
+    return `rule:${finding.ruleId}@path:${finding.filePath}`;
+  }
+
+  async function addFindingToAllowlist(finding: Finding) {
+    if (!settings) return "unavailable" as const;
+    const nextRule = buildFindingAllowlistRule(finding);
+    if (settings.findingAllowlist.includes(nextRule)) {
+      setHighlightedAllowlistRule(nextRule);
+      setNotice({ message: copy.addToAllowlistExists, tone: "warning" });
+      return "exists" as const;
+    }
+
+    try {
+      setSavingAllowlistRule(nextRule);
+      setError(null);
+      const saved = await api.saveSettings({
+        suspicionThreshold: settings.suspicionThreshold,
+        enableOpenAi: settings.enableOpenAi,
+        openAiModel: settings.openAiModel,
+        parallelScans: settings.parallelScans,
+        scanRetentionLimit: settings.scanRetentionLimit,
+        aiTokenLimit: settings.aiTokenLimit,
+        aiTokenWarningPercent: settings.aiTokenWarningPercent,
+        findingAllowlist: [...settings.findingAllowlist, nextRule],
+        openAiApiKey: settings.openAi.apiKeyInput?.trim() ? settings.openAi.apiKeyInput.trim() : undefined,
+        scannerToggles: settings.scannerToggles
+      });
+      setSettings(saved);
+      setSavedSettingsSnapshot(saved);
+      setHighlightedAllowlistRule(nextRule);
+      setNotice({ message: copy.addToAllowlistSaved, tone: "success" });
+      return "added" as const;
+    } catch (err) {
+      setError(toMessage(err, language === "vi" ? "Không thể lưu allowlist cho finding này." : "Could not save an allowlist rule for this finding."));
+      return "error" as const;
+    } finally {
+      setSavingAllowlistRule(null);
+    }
+  }
+
   return {
     dashboard,
     settings,
@@ -359,6 +434,7 @@ export function useRepoSentinelApp() {
     setLanguage,
     error,
     setError,
+    notice,
     query,
     setQuery,
     showLargestFiles,
@@ -370,6 +446,8 @@ export function useRepoSentinelApp() {
     findingExplanations,
     findingExplainLoading,
     retryingAiReview,
+    savingAllowlistRule,
+    highlightedAllowlistRule,
     copy,
     stats,
     filteredScans,
@@ -384,7 +462,16 @@ export function useRepoSentinelApp() {
     validateAiSettings,
     saveCurrentSettings,
     resetSettings,
+    addFindingToAllowlist,
+    buildFindingAllowlistRule,
     retryFindingDetail,
     retrySelectedScanAiReview
   };
 }
+
+
+
+
+
+
+

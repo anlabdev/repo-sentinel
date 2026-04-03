@@ -13,10 +13,15 @@ export function LiveScanPage(props: {
   selectedFindingId: string | null;
   selectedFindingExplanation?: AiExplanationResponse;
   selectedFindingLoading?: boolean;
+  findingAllowlist: string[];
+  savingAllowlistRule?: string | null;
   onSelectFinding: (id: string | null) => void;
   onRetryFindingDetail: () => void;
+  onAddFindingToAllowlist: (finding: ScanReport["findings"][number]) => Promise<"added" | "exists" | "error" | "unavailable">;
   onRetryAiReview: () => Promise<void>;
   retryingAiReview: boolean;
 }) {
-  return <LivePanel scan={props.scan} full onCancel={props.onCancel} copy={props.copy} language={props.language} showLargestFiles={props.showLargestFiles} enableCategoryFilter onToggleLargestFiles={props.onToggleLargestFiles} selectedFindingId={props.selectedFindingId} selectedFindingExplanation={props.selectedFindingExplanation} selectedFindingLoading={props.selectedFindingLoading} onSelectFinding={(id) => props.onSelectFinding(id)} onRetryFindingDetail={props.onRetryFindingDetail} onRetryAiReview={props.onRetryAiReview} retryingAiReview={props.retryingAiReview} />;
+  return <LivePanel scan={props.scan} full onCancel={props.onCancel} copy={props.copy} language={props.language} showLargestFiles={props.showLargestFiles} enableCategoryFilter onToggleLargestFiles={props.onToggleLargestFiles} selectedFindingId={props.selectedFindingId} selectedFindingExplanation={props.selectedFindingExplanation} selectedFindingLoading={props.selectedFindingLoading} findingAllowlist={props.findingAllowlist} savingAllowlistRule={props.savingAllowlistRule} onSelectFinding={(id) => props.onSelectFinding(id)} onRetryFindingDetail={props.onRetryFindingDetail} onAddFindingToAllowlist={props.onAddFindingToAllowlist} onRetryAiReview={props.onRetryAiReview} retryingAiReview={props.retryingAiReview} />;
 }
+
+

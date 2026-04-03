@@ -12,13 +12,14 @@ import { buildReportHtml } from "./services/report/htmlReport.js";
 import { buildReportPdf } from "./services/report/pdfReport.js";
 import { ExternalScannerRegistry } from "./services/scanners/externalScannerAdapters.js";
 import { ScanEngine } from "./services/scanners/scanEngine.js";
+import { buildOpenAiBudgetState, ensureAiBudgetAvailable } from "./utils/ai-budget.js";
 
-const scanRequestSchema = z.object({ repoUrl: z.string().url(), branch: z.string().min(1).max(200).optional(), allowAi: z.boolean().optional(), fetchMode: z.enum(["clone", "snapshot", "remote"]).optional(), language: z.enum(["vi", "en"]).optional() });
-const uploadScanQuerySchema = z.object({ repoName: z.string().min(1).max(200).optional(), allowAi: z.enum(["true", "false"]).optional(), language: z.enum(["vi", "en"]).optional() });
-const explainSchema = z.object({ findingId: z.string().min(1).optional(), language: z.enum(["vi", "en"]).default("vi"), question: z.string().max(2000).optional(), force: z.boolean().optional() });
-const settingsSchema = z.object({ suspicionThreshold: z.number().int().min(1).max(100), enableOpenAi: z.boolean(), openAiModel: z.string().min(1).max(100), aiTokenLimit: z.number().int().min(0).max(100000000), aiTokenWarningPercent: z.number().int().min(1).max(100), openAiApiKey: z.string().max(500).optional(), scannerToggles: z.object({ builtIn: z.boolean(), semgrep: z.boolean(), trivy: z.boolean(), osvScanner: z.boolean(), yara: z.boolean() }) });
+const scanRequestSchema = z.object({ repoUrl: z.string().url(), branch: z.string().min(1).max(200).optional(), allowAi: z.boolean().optional(), confirmBudgetOverride: z.boolean().optional(), fetchMode: z.enum(["clone", "snapshot", "remote"]).optional(), language: z.enum(["vi", "en"]).optional() });
+const uploadScanQuerySchema = z.object({ repoName: z.string().min(1).max(200).optional(), allowAi: z.enum(["true", "false"]).optional(), confirmBudgetOverride: z.enum(["true", "false"]).optional(), language: z.enum(["vi", "en"]).optional() });
+const explainSchema = z.object({ findingId: z.string().min(1).optional(), language: z.enum(["vi", "en"]).default("vi"), question: z.string().max(2000).optional(), force: z.boolean().optional(), confirmBudgetOverride: z.boolean().optional() });
+const settingsSchema = z.object({ suspicionThreshold: z.number().int().min(1).max(100), enableOpenAi: z.boolean(), openAiModel: z.string().min(1).max(100), parallelScans: z.number().int().min(1).max(8), scanRetentionLimit: z.number().int().min(20).max(5000), aiTokenLimit: z.number().int().min(0).max(100000000), aiTokenWarningPercent: z.number().int().min(1).max(100), findingAllowlist: z.array(z.string().max(300)).max(200), openAiApiKey: z.string().max(500).optional(), scannerToggles: z.object({ builtIn: z.boolean(), semgrep: z.boolean(), trivy: z.boolean(), osvScanner: z.boolean(), yara: z.boolean() }) });
 const validateOpenAiSchema = z.object({ openAiApiKey: z.string().max(500).optional(), openAiModel: z.string().min(1).max(100).optional(), language: z.enum(["vi", "en"]).optional() });
-const retryAiSchema = z.object({ question: z.string().max(2000).optional(), language: z.enum(["vi", "en"]).optional() });
+const retryAiSchema = z.object({ question: z.string().max(2000).optional(), language: z.enum(["vi", "en"]).optional(), confirmBudgetOverride: z.boolean().optional() });
 
 type ScanListRow = { id: string; repoUrl: string; branch?: string; repoName: string; status: "queued" | "running" | "completed" | "failed" | "cancelled"; overallScore: number; severityBucket: "low" | "medium" | "high" | "critical"; aiEscalated: boolean; findingsCount: number; totalTokens?: number; startedAt: string; completedAt?: string };
 
@@ -54,28 +55,6 @@ async function ensureValidatedSettings(db: Database, aiService: OpenAiReviewServ
   return settings;
 }
 
-function buildOpenAiBudgetState(settings: StoredSettings, totalTokensUsed: number) {
-  const limitTokens = Math.max(0, Number(settings.aiTokenLimit ?? 1000000));
-  const warningPercent = Math.min(100, Math.max(1, Number(settings.aiTokenWarningPercent ?? 80)));
-  const remainingTokens = Math.max(0, limitTokens - totalTokensUsed);
-  const warningPoint = limitTokens > 0 ? Math.floor((limitTokens * warningPercent) / 100) : 0;
-  const status = limitTokens > 0 && totalTokensUsed >= limitTokens ? "exceeded" : limitTokens > 0 && totalTokensUsed >= warningPoint ? "warning" : "ok";
-  const warningMessage = status === "exceeded"
-    ? "Đã vượt giới hạn token AI đã cấu hình."
-    : status === "warning"
-      ? "Đang gần chạm giới hạn token AI đã cấu hình."
-      : "Ngân sách token AI vẫn còn an toàn.";
-
-  return {
-    limitTokens,
-    warningPercent,
-    usedTokens: totalTokensUsed,
-    remainingTokens,
-    status,
-    warningMessage
-  } as const;
-}
-
 async function getTotalTokensUsed(db: Database) {
   const scans = await db.listScans() as ScanListRow[];
   return scans.reduce((sum, scan) => sum + Number(scan.totalTokens ?? 0), 0);
@@ -86,9 +65,12 @@ function toSettingsResponse(settings: StoredSettings, env: typeof import("./conf
     suspicionThreshold: settings.suspicionThreshold,
     enableOpenAi: settings.enableOpenAi,
     openAiModel: settings.openAiModel,
+    parallelScans: settings.parallelScans,
+    scanRetentionLimit: settings.scanRetentionLimit,
     scannerToggles: settings.scannerToggles,
     aiTokenLimit: settings.aiTokenLimit,
     aiTokenWarningPercent: settings.aiTokenWarningPercent,
+    findingAllowlist: settings.findingAllowlist,
     toolAvailability,
     openAi: {
       configured: Boolean(settings.openAiApiKey),
@@ -178,8 +160,10 @@ export async function createApp() {
       suspicionThreshold: body.suspicionThreshold,
       enableOpenAi: body.enableOpenAi && validation.validationStatus === "valid",
       openAiModel: body.openAiModel,
+      parallelScans: body.parallelScans,
       aiTokenLimit: body.aiTokenLimit,
       aiTokenWarningPercent: body.aiTokenWarningPercent,
+      findingAllowlist: body.findingAllowlist,
       openAiApiKey: requestedApiKey || undefined,
       openAiValidationStatus: validation.validationStatus,
       openAiValidationMessage: validation.validationMessage,
@@ -192,7 +176,17 @@ export async function createApp() {
 
   app.post("/api/scans", async (req, res) => {
     const parsed = scanRequestSchema.safeParse(req.body); if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-    const payload: ScanRequest = parsed.data; return res.status(202).json(await scanEngine.enqueueScan(payload));
+    const payload: ScanRequest = parsed.data;
+    const settings = await ensureValidatedSettings(db, aiService, await db.getSettings());
+    if (payload.allowAi && settings.enableOpenAi && settings.openAiApiKey && settings.openAiValidationStatus === "valid") {
+      const budget = buildOpenAiBudgetState(settings, await getTotalTokensUsed(db));
+      try {
+        ensureAiBudgetAvailable(budget, payload.confirmBudgetOverride);
+      } catch (error) {
+        return res.status(409).json({ error: error instanceof Error ? error.message : "AI token budget confirmation required.", budget, requiresConfirmation: true });
+      }
+    }
+    return res.status(202).json(await scanEngine.enqueueScan(payload));
   });
 
   app.post("/api/scans/upload", express.raw({ type: () => true, limit: "500mb" }), async (req, res) => {
@@ -215,6 +209,7 @@ export async function createApp() {
     const payload: ScanRequest = {
       repoUrl: `upload://${repoName || "uploaded-project"}`,
       allowAi: parsed.data.allowAi !== "false",
+      confirmBudgetOverride: parsed.data.confirmBudgetOverride === "true",
       fetchMode: "upload",
       language: parsed.data.language ?? "vi",
       uploadedArchive: {
@@ -223,6 +218,17 @@ export async function createApp() {
         repoName: repoName || originalName.replace(/\.zip$/i, "")
       }
     };
+
+    const settings = await ensureValidatedSettings(db, aiService, await db.getSettings());
+    if (payload.allowAi && settings.enableOpenAi && settings.openAiApiKey && settings.openAiValidationStatus === "valid") {
+      const budget = buildOpenAiBudgetState(settings, await getTotalTokensUsed(db));
+      try {
+        ensureAiBudgetAvailable(budget, payload.confirmBudgetOverride);
+      } catch (error) {
+        await fs.rm(tempFilePath, { force: true });
+        return res.status(409).json({ error: error instanceof Error ? error.message : "AI token budget confirmation required.", budget, requiresConfirmation: true });
+      }
+    }
 
     return res.status(202).json(await scanEngine.enqueueScan(payload));
   });
@@ -238,6 +244,13 @@ export async function createApp() {
         if (cached) return res.json({ ...cached, cacheSource: "db" });
       }
       const currentSettings = await ensureValidatedSettings(db, aiService, await db.getSettings());
+      if (!currentSettings.openAiApiKey || currentSettings.openAiValidationStatus !== "valid") return res.status(400).json({ error: "OpenAI API key chưa hợp lệ hoặc chưa được cấu hình." });
+      const budget = buildOpenAiBudgetState(currentSettings, await getTotalTokensUsed(db));
+      try {
+        ensureAiBudgetAvailable(budget, parsed.data.confirmBudgetOverride);
+      } catch (error) {
+        return res.status(409).json({ error: error instanceof Error ? error.message : "AI token budget confirmation required.", budget, requiresConfirmation: true });
+      }
       const explanation = await aiService.explainFinding({ repoUrl: scan.repoUrl, finding, language: parsed.data.language, question: parsed.data.question }, { apiKey: currentSettings.openAiApiKey, model: currentSettings.openAiModel });
       await db.saveAiExplanation({ ...cacheInput, response: explanation });
       return res.json(explanation);
@@ -248,6 +261,13 @@ export async function createApp() {
       if (cached) return res.json({ ...cached, cacheSource: "db" });
     }
     const currentSettings = await ensureValidatedSettings(db, aiService, await db.getSettings());
+    if (!currentSettings.openAiApiKey || currentSettings.openAiValidationStatus !== "valid") return res.status(400).json({ error: "OpenAI API key chưa hợp lệ hoặc chưa được cấu hình." });
+    const budget = buildOpenAiBudgetState(currentSettings, await getTotalTokensUsed(db));
+    try {
+      ensureAiBudgetAvailable(budget, parsed.data.confirmBudgetOverride);
+    } catch (error) {
+      return res.status(409).json({ error: error instanceof Error ? error.message : "AI token budget confirmation required.", budget, requiresConfirmation: true });
+    }
     const explanation = await aiService.explainReport({ repoUrl: scan.repoUrl, findings: scan.findings, aiReview: scan.aiReview, language: parsed.data.language, question: parsed.data.question }, { apiKey: currentSettings.openAiApiKey, model: currentSettings.openAiModel });
     await db.saveAiExplanation({ ...cacheInput, response: explanation });
     return res.json(explanation);
@@ -257,6 +277,12 @@ export async function createApp() {
     const parsed = retryAiSchema.safeParse(req.body ?? {}); if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     const settings = await ensureValidatedSettings(db, aiService, await db.getSettings());
     if (!settings.openAiApiKey || settings.openAiValidationStatus !== "valid") return res.status(400).json({ error: "OpenAI API key chưa hợp lệ hoặc chưa được cấu hình." });
+    const budget = buildOpenAiBudgetState(settings, await getTotalTokensUsed(db));
+    try {
+      ensureAiBudgetAvailable(budget, parsed.data.confirmBudgetOverride);
+    } catch (error) {
+      return res.status(409).json({ error: error instanceof Error ? error.message : "AI token budget confirmation required.", budget, requiresConfirmation: true });
+    }
     const scan = await db.getScanById(req.params.id); if (!scan) return res.status(404).json({ error: "Không tìm thấy báo cáo quét." });
     if (scan.status !== "completed") return res.status(409).json({ error: "Chỉ có thể thử lại AI review với báo cáo đã hoàn tất." });
     const aiReview = await aiService.review({ repoUrl: scan.repoUrl, findings: scan.findings, files: [], language: parsed.data.language ?? "vi" }, { apiKey: settings.openAiApiKey, model: settings.openAiModel });

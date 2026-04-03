@@ -19,8 +19,11 @@ export function LivePanel({
   selectedFindingId,
   selectedFindingExplanation,
   selectedFindingLoading,
+  findingAllowlist = [],
+  savingAllowlistRule,
   onSelectFinding,
   onRetryFindingDetail,
+  onAddFindingToAllowlist,
   onRetryAiReview,
   retryingAiReview
 }: {
@@ -35,8 +38,11 @@ export function LivePanel({
   selectedFindingId?: string | null;
   selectedFindingExplanation?: AiExplanationResponse;
   selectedFindingLoading?: boolean;
+  findingAllowlist?: string[];
+  savingAllowlistRule?: string | null;
   onSelectFinding?: (findingId: string) => void;
   onRetryFindingDetail?: () => void;
+  onAddFindingToAllowlist?: (finding: ScanReport["findings"][number]) => Promise<"added" | "exists" | "error" | "unavailable">;
   onRetryAiReview?: () => Promise<void>;
   retryingAiReview?: boolean;
 }) {
@@ -75,6 +81,8 @@ export function LivePanel({
     .map((category) => ({ category, items: visibleFindings.filter((finding) => finding.category === category) }))
     .filter((group) => group.items.length > 0);
   const selectedFinding = visibleFindings.find((finding) => finding.id === selectedFindingId) ?? visibleFindings[0] ?? scan.findings[0];
+  const selectedFindingAllowlistRule = selectedFinding ? `rule:${selectedFinding.ruleId}@path:${selectedFinding.filePath}` : null;
+  const selectedFindingAlreadyAllowlisted = selectedFindingAllowlistRule ? findingAllowlist.includes(selectedFindingAllowlistRule) : false;
 
   return (
     <section className={`rs-panel ${full ? "rs-full" : ""}`}>
@@ -123,7 +131,10 @@ export function LivePanel({
               <section ref={aiDetailRef} className="rs-ai-section rs-ai-detail-section">
                 <div className="rs-ai-section-header">
                   <div className="rs-ai-section-head">{copy.aiDetail}</div>
-                  {selectedFinding ? <button type="button" className="rs-secondary rs-secondary-compact rs-ai-retry" onClick={() => onRetryFindingDetail?.()} disabled={selectedFindingLoading}>{selectedFindingLoading ? copy.aiAnalyzing : copy.retryAiDetail}</button> : null}
+                  <div className="rs-header-actions">
+                    {selectedFinding ? <button type="button" className="rs-secondary rs-secondary-compact rs-ai-allowlist" onClick={() => void onAddFindingToAllowlist?.(selectedFinding)} disabled={!onAddFindingToAllowlist || selectedFindingAlreadyAllowlisted || savingAllowlistRule === selectedFindingAllowlistRule} title={selectedFindingAllowlistRule ?? undefined}>{savingAllowlistRule === selectedFindingAllowlistRule ? copy.addToAllowlistSaving : selectedFindingAlreadyAllowlisted ? copy.addToAllowlistExists : copy.addToAllowlist}</button> : null}
+                    {selectedFinding ? <button type="button" className="rs-secondary rs-secondary-compact rs-ai-retry" onClick={() => onRetryFindingDetail?.()} disabled={selectedFindingLoading}>{selectedFindingLoading ? copy.aiAnalyzing : copy.retryAiDetail}</button> : null}
+                  </div>
                 </div>
                 {selectedFinding ? <div className="rs-ai-finding-detail">
                   <div className="rs-detail-card">
@@ -226,5 +237,7 @@ function renderExplanationSourceBadge(source: AiExplanationResponse["cacheSource
   const label = resolved === "db" ? copy.cacheDb : resolved === "rule" ? copy.cacheRule : copy.cacheAi;
   return <b className={`rs-origin-badge ${className}`.trim()}>{label}</b>;
 }
+
+
 
 

@@ -5,8 +5,10 @@ import { normalizeConfidenceValue } from "../../../../utils/confidence.js";
 import { normalizeFindingCategory } from "../../finding-classifier.js";
 import { binaryArtifactDetector } from "../binaryArtifactDetector.js";
 import { encodedPayloadDetector } from "../encodedPayloadDetector.js";
+import { exfiltrationDetector } from "../exfiltrationDetector.js";
 import { installHooksDetector } from "../installHooksDetector.js";
 import { keyMaterialDetector } from "../keyMaterialDetector.js";
+import { persistenceBehaviorDetector } from "../persistenceBehaviorDetector.js";
 import { secretPatternDetector } from "../secretPatternDetector.js";
 import { suspiciousCommandDetector } from "../suspiciousCommandDetector.js";
 import { suspiciousFilenameDetector } from "../suspiciousFilenameDetector.js";
@@ -136,4 +138,23 @@ DB_PASSWORD=supersecretvalue`)]
 
   assert.ok(findings.some((finding) => finding.ruleId === "secret.env.openai-api-key"));
   assert.ok(findings.some((finding) => finding.ruleId === "secret.env.db-password"));
+});
+
+
+test("persistenceBehaviorDetector detects autorun registration patterns", async () => {
+  const findings = await persistenceBehaviorDetector.detect({
+    files: [file("scripts/install.ps1", "schtasks /create /sc onlogon /tn demo /tr calc.exe")]
+  });
+
+  assert.equal(findings[0]?.ruleId, "execution.persistence.autorun-registration");
+  assert.equal(findings[0]?.category, "execution");
+});
+
+test("exfiltrationDetector detects secret-like outbound requests", async () => {
+  const findings = await exfiltrationDetector.detect({
+    files: [file("src/beacon.py", "requests.post(url, headers={\"Authorization\": os.environ[\"API_TOKEN\"]})")]
+  });
+
+  assert.equal(findings[0]?.ruleId, "execution.exfiltration.secret-over-network");
+  assert.equal(findings[0]?.category, "execution");
 });

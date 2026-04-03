@@ -47,6 +47,7 @@ export const COPY = {
     riskThreshold: "Ngưỡng rủi ro",
     autoEscalate: "Tự leo thang tại",
     parallelScans: "Số lượt quét song song",
+    scanRetentionLimit: "Giữ tối đa bản quét",
     model: "Mô hình",
     autoScanOnPush: "Tự quét khi push",
     findings: "Phát hiện",
@@ -161,7 +162,13 @@ export const COPY = {
     aiBudgetExceeded: "Ngân sách token AI đã chạm giới hạn. Bạn có thể tiếp tục có chủ đích hoặc quét không dùng AI.",
     aiBudgetConfirmWarning: "Ngân sách token AI đang gần hết. Chọn OK để tiếp tục dùng AI, hoặc Cancel để tiếp tục nhưng tắt AI cho hành động này.",
     aiBudgetConfirmExceeded: "Ngân sách token AI đã hết giới hạn. Chọn OK nếu vẫn muốn tiếp tục dùng AI, hoặc Cancel để tiếp tục nhưng tắt AI cho hành động này.",
-    aiDisabledForThisAction: "Đã tiếp tục mà không dùng AI cho hành động này."
+    aiDisabledForThisAction: "Đã tiếp tục mà không dùng AI cho hành động này.",
+    findingAllowlist: "Allowlist finding",
+    findingAllowlistHint: "Mỗi dòng: rule:..., path:..., tag:... hoặc rule:...@path:... để ẩn finding đã biết là hợp lệ.",
+    addToAllowlist: "Thêm vào allowlist",
+    addToAllowlistSaved: "Đã thêm vào allowlist",
+    addToAllowlistExists: "Đã có trong allowlist",
+    addToAllowlistSaving: "Đang lưu allowlist..."
   },
   en: {
     navOverview: "Overview",
@@ -198,6 +205,7 @@ export const COPY = {
     riskThreshold: "Risk Threshold",
     autoEscalate: "Auto-Escalate at",
     parallelScans: "Parallel scans",
+    scanRetentionLimit: "Keep scans",
     model: "Model",
     autoScanOnPush: "Auto-scan on push",
     findings: "Findings",
@@ -312,7 +320,13 @@ export const COPY = {
     aiBudgetExceeded: "AI token budget has reached the configured limit. You can still continue intentionally or run without AI.",
     aiBudgetConfirmWarning: "The AI token budget is nearly exhausted. Press OK to continue with AI, or Cancel to continue without AI for this action.",
     aiBudgetConfirmExceeded: "The AI token budget has reached its limit. Press OK to continue with AI anyway, or Cancel to continue without AI for this action.",
-    aiDisabledForThisAction: "Continued without AI for this action."
+    aiDisabledForThisAction: "Continued without AI for this action.",
+    findingAllowlist: "Finding allowlist",
+    findingAllowlistHint: "One rule per line: rule:..., path:..., tag:... or rule:...@path:... to suppress known-safe findings.",
+    addToAllowlist: "Add to allowlist",
+    addToAllowlistSaved: "Added to allowlist",
+    addToAllowlistExists: "Already allowlisted",
+    addToAllowlistSaving: "Saving allowlist..."
   }
 } as const;
 
@@ -354,3 +368,5 @@ export const INITIAL_FORM_STATE: FormState = {
   allowAi: true,
   includeNodeModules: false
 };
+
+

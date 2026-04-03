@@ -29,24 +29,29 @@ export function OverviewPage(props: {
   selectedFindingId: string | null;
   selectedFindingExplanation?: AiExplanationResponse;
   selectedFindingLoading?: boolean;
+  findingAllowlist: string[];
+  savingAllowlistRule?: string | null;
   setSelectedFindingId: (id: string | null) => void;
   retryFindingDetail: () => void;
+  addFindingToAllowlist: (finding: ScanReport["findings"][number]) => Promise<"added" | "exists" | "error" | "unavailable">;
   retrySelectedScanAiReview: () => Promise<void>;
   retryingAiReview: boolean;
   openScan: (id: string, switchTab?: boolean) => Promise<unknown>;
   goHistory: () => void;
 }) {
-  const { stats, form, setForm, onSubmit, selectedScan, scans, settings, saving, settingsDirty, setSettings, saveCurrentSettings, resetSettings, validateAiSettings, validatingAi, copy, language, showLargestFiles, selectedFindingId, selectedFindingExplanation, selectedFindingLoading, setSelectedFindingId, retryFindingDetail, retrySelectedScanAiReview, retryingAiReview, openScan, goHistory } = props;
+  const { stats, form, setForm, onSubmit, selectedScan, scans, settings, saving, settingsDirty, setSettings, saveCurrentSettings, resetSettings, validateAiSettings, validatingAi, copy, language, showLargestFiles, selectedFindingId, selectedFindingExplanation, selectedFindingLoading, findingAllowlist, savingAllowlistRule, setSelectedFindingId, retryFindingDetail, addFindingToAllowlist, retrySelectedScanAiReview, retryingAiReview, openScan, goHistory } = props;
 
   return (
     <>
       <OverviewStats stats={stats} copy={copy} />
       <ScanFormCard form={form} setForm={setForm} onSubmit={onSubmit} copy={copy} language={language} />
       <div className="rs-overview-grid rs-overview-main">
-        <LivePanel scan={selectedScan} copy={copy} language={language} showLargestFiles={showLargestFiles} enableCategoryFilter={false} selectedFindingId={selectedFindingId} selectedFindingExplanation={selectedFindingExplanation} selectedFindingLoading={selectedFindingLoading} onSelectFinding={(id) => setSelectedFindingId(id)} onRetryFindingDetail={retryFindingDetail} onRetryAiReview={retrySelectedScanAiReview} retryingAiReview={retryingAiReview} />
+        <LivePanel scan={selectedScan} copy={copy} language={language} showLargestFiles={showLargestFiles} enableCategoryFilter={false} selectedFindingId={selectedFindingId} selectedFindingExplanation={selectedFindingExplanation} selectedFindingLoading={selectedFindingLoading} findingAllowlist={findingAllowlist} savingAllowlistRule={savingAllowlistRule} onSelectFinding={(id) => setSelectedFindingId(id)} onRetryFindingDetail={retryFindingDetail} onAddFindingToAllowlist={addFindingToAllowlist} onRetryAiReview={retrySelectedScanAiReview} retryingAiReview={retryingAiReview} />
         <HistoryPanel scans={scans} onOpen={(id) => openScan(id, true) as Promise<void>} compact onShowMore={goHistory} copy={copy} language={language} />
       </div>
       <SettingsPanel settings={settings} saving={saving} isDirty={settingsDirty} setSettings={setSettings} onSubmit={saveCurrentSettings} onReset={resetSettings} onValidateAi={validateAiSettings} validatingAi={validatingAi} compact copy={copy} />
     </>
   );
 }
+
+

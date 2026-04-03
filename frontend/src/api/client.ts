@@ -76,11 +76,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body)
     }),
-  uploadScan: async (file: File, body: { repoName?: string; allowAi: boolean; language?: UiLanguage }) => {
+  uploadScan: async (file: File, body: { repoName?: string; allowAi: boolean; confirmBudgetOverride?: boolean; language?: UiLanguage }) => {
     const params = new URLSearchParams();
     if (body.repoName) params.set("repoName", body.repoName);
     params.set("allowAi", body.allowAi ? "true" : "false");
     if (body.language) params.set("language", body.language);
+    if (body.confirmBudgetOverride) params.set("confirmBudgetOverride", "true");
     const response = await fetch(`/api/scans/upload?${params.toString()}`, {
       method: "POST",
       headers: {
@@ -95,7 +96,7 @@ export const api = {
     }
     return await response.json() as { id: string; status: string; startedAt: string };
   },
-  createScan: (body: { repoUrl: string; branch?: string; allowAi: boolean; fetchMode?: RepositoryFetchMode; language?: UiLanguage }) =>
+  createScan: (body: { repoUrl: string; branch?: string; allowAi: boolean; confirmBudgetOverride?: boolean; fetchMode?: RepositoryFetchMode; language?: UiLanguage }) =>
     request<{ id: string; status: string; startedAt: string }>("/api/scans", {
       method: "POST",
       body: JSON.stringify(body)
@@ -116,12 +117,12 @@ export const api = {
   getScan: (id: string) => request<ScanReport>(`/api/scans/${id}`),
   streamScan: (id: string) => new EventSource(`/api/scans/${id}/stream`),
   exportUrl: (id: string, format: "json" | "html" | "pdf", language?: "vi" | "en") => `/api/scans/${id}/export/${format}${language ? `?lang=${language}` : ""}`,
-  explainFinding: (scanId: string, body: { findingId?: string; language: "vi" | "en"; question?: string; force?: boolean }) =>
+  explainFinding: (scanId: string, body: { findingId?: string; language: "vi" | "en"; question?: string; force?: boolean; confirmBudgetOverride?: boolean }) =>
     request<AiExplanationResponse>(`/api/scans/${scanId}/explain`, {
       method: "POST",
       body: JSON.stringify(body)
     }),
-  retryAiReview: (scanId: string, body?: { question?: string; language?: UiLanguage }) =>
+  retryAiReview: (scanId: string, body?: { question?: string; language?: UiLanguage; confirmBudgetOverride?: boolean }) =>
     request<ScanReport>(`/api/scans/${scanId}/retry-ai`, {
       method: "POST",
       body: JSON.stringify(body ?? {})

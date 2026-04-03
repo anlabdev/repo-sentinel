@@ -17,8 +17,11 @@ function createDefaultSettings(env: { openAiModel?: string }): StoredSettings {
     suspicionThreshold: 60,
     enableOpenAi: false,
     openAiModel: env.openAiModel ?? "gpt-4.1-mini",
+    parallelScans: 4,
+    scanRetentionLimit: 250,
     aiTokenLimit: 1000000,
     aiTokenWarningPercent: 80,
+    findingAllowlist: [],
     openAiApiKey: undefined,
     openAiValidationStatus: "missing",
     openAiValidationMessage: "OpenAI API key is not configured.",
@@ -165,6 +168,7 @@ export class Database {
         upsert.run(key, JSON.stringify(value ?? null));
       }
       this.db.exec("COMMIT");
+      await this.enforceScanRetention((await this.getSettings()).scanRetentionLimit);
     } catch (error) {
       this.db.exec("ROLLBACK");
       throw error;
@@ -200,6 +204,7 @@ export class Database {
           }
         })
       });
+    await this.enforceScanRetention((await this.getSettings()).scanRetentionLimit);
   }
 
   public async updateScanProgress(
@@ -334,6 +339,7 @@ export class Database {
           );
       }
       this.db.exec("COMMIT");
+      await this.enforceScanRetention((await this.getSettings()).scanRetentionLimit);
     } catch (error) {
       this.db.exec("ROLLBACK");
       throw error;
@@ -344,12 +350,41 @@ export class Database {
     this.db
       .prepare("UPDATE scans SET status = 'failed', progress = 100, current_step = 'Thất bại', error_message = ?, completed_at = ? WHERE id = ?")
       .run(errorMessage, new Date().toISOString(), id);
+    await this.enforceScanRetention((await this.getSettings()).scanRetentionLimit);
   }
 
   public async markScanCancelled(id: string, message: string) {
     this.db
       .prepare("UPDATE scans SET status = 'cancelled', progress = 100, current_step = 'Đã hủy', error_message = ?, completed_at = ? WHERE id = ?")
       .run(message, new Date().toISOString(), id);
+    await this.enforceScanRetention((await this.getSettings()).scanRetentionLimit);
+  }
+
+  private async enforceScanRetention(limit: number) {
+    const safeLimit = Math.max(20, Number(limit || 0));
+    const rows = this.db.prepare("SELECT id FROM scans WHERE status IN ('completed','failed','cancelled') ORDER BY COALESCE(completed_at, started_at) DESC").all() as Array<{ id: string }>;
+    if (rows.length <= safeLimit) {
+      return;
+    }
+
+    const staleIds = rows.slice(safeLimit).map((row) => row.id);
+    if (!staleIds.length) {
+      return;
+    }
+
+    this.db.exec("BEGIN");
+    try {
+      for (const id of staleIds) {
+        this.db.prepare("DELETE FROM findings WHERE scan_id = ?").run(id);
+        this.db.prepare("DELETE FROM ai_reviews WHERE scan_id = ?").run(id);
+        this.db.prepare("DELETE FROM ai_explanations WHERE scan_id = ?").run(id);
+        this.db.prepare("DELETE FROM scans WHERE id = ?").run(id);
+      }
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   public async deleteScan(id: string) {

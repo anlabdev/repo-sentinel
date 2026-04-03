@@ -5,6 +5,8 @@ export function buildReportHtml(scan: ScanReport, language: UiLanguage = "vi") {
   const copy = getHtmlCopy(language);
   const tokenUsage = scan.tokenUsage;
   const tokenBreakdown = tokenUsage?.byPhase;
+  const suppressedFindings = getRawNumber(scan.raw, "suppressedFindings");
+  const allowlistRules = getRawStringArray(scan.raw, "allowlistRulesApplied");
   const findings = scan.findings.slice(0, 20);
   const largestFiles = metrics.largestFiles.slice(0, 10);
 
@@ -23,6 +25,19 @@ export function buildReportHtml(scan: ScanReport, language: UiLanguage = "vi") {
   const externalHtml = scan.externalScanners.length
     ? `<div class="table-grid">${scan.externalScanners.map((tool) => `<div class="row"><span>${escapeHtml(tool.name)}</span><strong>${escapeHtml(tool.status)}</strong><small>${escapeHtml(tool.details)}</small></div>`).join("")}</div>`
     : `<p class="muted">${copy.noExternalScanners}</p>`;
+
+  const suppressionHtml = suppressedFindings || allowlistRules.length
+    ? `
+      <div class="detail-card">
+        <div class="block-head">${language === "vi" ? "Allowlist & suppression" : "Allowlist & suppression"}</div>
+        <div class="meta-grid two">
+          <div class="metric"><span>${language === "vi" ? "Finding bị ẩn" : "Suppressed findings"}</span><strong>${suppressedFindings}</strong></div>
+          <div class="metric"><span>${language === "vi" ? "Rule allowlist" : "Allowlist rules"}</span><strong>${allowlistRules.length}</strong></div>
+        </div>
+        ${allowlistRules.length ? `<div class="evidence-list"><div class="block-head">${language === "vi" ? "Danh sách rule" : "Rules"}</div>${allowlistRules.map((rule) => `<div class="evidence-row"><span>${escapeHtml(rule)}</span></div>`).join("")}</div>` : ""}
+      </div>
+    `
+    : `<p class="muted">${language === "vi" ? "Không có rule allowlist nào được áp dụng." : "No allowlist rules were applied."}</p>`;
 
   const aiHtml = scan.aiReview
     ? `
@@ -125,6 +140,11 @@ export function buildReportHtml(scan: ScanReport, language: UiLanguage = "vi") {
         <article class="metric"><span>${copy.findingExplanationTokens}</span><strong>${Object.values(tokenBreakdown?.findingExplanations ?? {}).reduce((sum, usage) => sum + Number(usage?.totalTokens ?? 0), 0)}</strong></article>
         <article class="metric"><span>${copy.explainedFindings}</span><strong>${Object.keys(tokenBreakdown?.findingExplanations ?? {}).length}</strong></article>
       </div>
+    </section>
+
+    <section class="panel">
+      <h2>${language === "vi" ? "Allowlist & suppression" : "Allowlist & suppression"}</h2>
+      ${suppressionHtml}
     </section>
 
     <section class="panel">
@@ -373,4 +393,14 @@ function emptyMetrics(): ScanMetrics {
     largestDirectories: [],
     fileErrors: []
   };
+}
+
+function getRawNumber(raw: Record<string, unknown>, key: string) {
+  const value = raw[key];
+  return typeof value === "number" ? value : Number(value ?? 0) || 0;
+}
+
+function getRawStringArray(raw: Record<string, unknown>, key: string) {
+  const value = raw[key];
+  return Array.isArray(value) ? value.map((item) => String(item)) : [];
 }

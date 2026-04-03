@@ -56,6 +56,8 @@ export async function buildReportPdf(scan: ScanReport, env: AppEnv, language: Ui
 
   const metrics = scan.metrics ?? emptyMetrics();
   const tokenUsage = scan.tokenUsage;
+  const suppressedFindings = getRawNumber(scan.raw, "suppressedFindings");
+  const allowlistRules = getRawStringArray(scan.raw, "allowlistRulesApplied");
   const pdfDoc = await PDFDocument.create();
   pdfDoc.registerFontkit(fontkit);
   pdfDoc.setTitle(`${copy.title} - ${scan.repoName}`);
@@ -135,6 +137,15 @@ export async function buildReportPdf(scan: ScanReport, env: AppEnv, language: Ui
   drawKeyValue(language === "vi" ? "AI triage" : "AI triage", String(tokenUsage?.byPhase?.aiTriage?.totalTokens ?? 0));
   drawKeyValue(language === "vi" ? "Giải thích báo cáo" : "Report explanation", String(tokenUsage?.byPhase?.reportExplanation?.totalTokens ?? 0));
   drawKeyValue(language === "vi" ? "Giải thích finding" : "Finding explanations", String(Object.values(tokenUsage?.byPhase?.findingExplanations ?? {}).reduce((sum, usage) => sum + Number(usage?.totalTokens ?? 0), 0)));
+
+  drawSection(language === "vi" ? "Allowlist & suppression" : "Allowlist & suppression");
+  drawKeyValue(language === "vi" ? "Finding bị ẩn" : "Suppressed findings", String(suppressedFindings));
+  drawKeyValue(language === "vi" ? "Rule allowlist" : "Allowlist rules", String(allowlistRules.length));
+  if (allowlistRules.length) {
+    for (const rule of allowlistRules.slice(0, 12)) {
+      drawWrapped(`- ${rule}`);
+    }
+  }
 
   drawSection(copy.findings);
   if (scan.findings.length === 0) {
@@ -489,4 +500,14 @@ function emptyMetrics(): ScanMetrics {
     largestDirectories: [],
     fileErrors: []
   };
+}
+
+function getRawNumber(raw: Record<string, unknown>, key: string) {
+  const value = raw[key];
+  return typeof value === "number" ? value : Number(value ?? 0) || 0;
+}
+
+function getRawStringArray(raw: Record<string, unknown>, key: string) {
+  const value = raw[key];
+  return Array.isArray(value) ? value.map((item) => String(item)) : [];
 }

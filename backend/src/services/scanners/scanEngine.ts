@@ -12,8 +12,10 @@ import type { ExternalScannerRegistry } from "./externalScannerAdapters.js";
 import type { Detector } from "./types.js";
 import { binaryArtifactDetector } from "./detectors/binaryArtifactDetector.js";
 import { encodedPayloadDetector } from "./detectors/encodedPayloadDetector.js";
+import { exfiltrationDetector } from "./detectors/exfiltrationDetector.js";
 import { installHooksDetector } from "./detectors/installHooksDetector.js";
 import { keyMaterialDetector } from "./detectors/keyMaterialDetector.js";
+import { persistenceBehaviorDetector } from "./detectors/persistenceBehaviorDetector.js";
 import { secretPatternDetector } from "./detectors/secretPatternDetector.js";
 import { suspiciousCommandDetector } from "./detectors/suspiciousCommandDetector.js";
 import { suspiciousFilenameDetector } from "./detectors/suspiciousFilenameDetector.js";
@@ -31,6 +33,8 @@ interface ScanEngineDeps {
 const detectors: Detector[] = [
   installHooksDetector,
   suspiciousCommandDetector,
+  persistenceBehaviorDetector,
+  exfiltrationDetector,
   encodedPayloadDetector,
   workflowRiskDetector,
   keyMaterialDetector,
@@ -48,7 +52,9 @@ const severityOrder: Record<Severity, number> = {
 
 export class ScanEngine {
   private readonly runningJobs = new Map<string, AbortController>();
+  private readonly pendingJobs: Array<{ scanId: string; request: ScanRequest }> = [];
   private readonly events = new EventEmitter();
+  private processingQueue = false;
 
   public constructor(private readonly deps: ScanEngineDeps) {}
 
@@ -64,10 +70,9 @@ export class ScanEngine {
       sourceMode: request.fetchMode ?? "clone"
     });
 
-    const controller = new AbortController();
-    this.runningJobs.set(scanId, controller);
+    this.pendingJobs.push({ scanId, request });
     await this.emitSnapshot(scanId);
-    void this.runScan(scanId, request, controller.signal);
+    void this.processQueue();
     return {
       id: scanId,
       status: "queued",
@@ -76,6 +81,14 @@ export class ScanEngine {
   }
 
   public async cancelScan(scanId: string) {
+    const pendingIndex = this.pendingJobs.findIndex((job) => job.scanId === scanId);
+    if (pendingIndex >= 0) {
+      this.pendingJobs.splice(pendingIndex, 1);
+      await this.deps.db.markScanCancelled(scanId, "Lần quét đã bị hủy trước khi bắt đầu.");
+      await this.emitSnapshot(scanId);
+      return true;
+    }
+
     const controller = this.runningJobs.get(scanId);
     if (!controller) {
       return false;
@@ -88,6 +101,29 @@ export class ScanEngine {
   public onScanUpdate(listener: (scanId: string, scan: ScanReport | null) => void) {
     this.events.on("scan-update", listener);
     return () => this.events.off("scan-update", listener);
+  }
+
+  private async processQueue() {
+    if (this.processingQueue) {
+      return;
+    }
+
+    this.processingQueue = true;
+    try {
+      const settings = await this.deps.db.getSettings();
+      const maxParallel = Math.max(1, Number(settings.parallelScans ?? 4));
+      while (this.runningJobs.size < maxParallel && this.pendingJobs.length > 0) {
+        const next = this.pendingJobs.shift();
+        if (!next) {
+          break;
+        }
+        const controller = new AbortController();
+        this.runningJobs.set(next.scanId, controller);
+        void this.runScan(next.scanId, next.request, controller.signal);
+      }
+    } finally {
+      this.processingQueue = false;
+    }
   }
 
   private async runScan(scanId: string, request: ScanRequest, signal: AbortSignal) {
@@ -293,7 +329,17 @@ export class ScanEngine {
         ? { findings: [], statuses: this.deps.externalRegistry.buildRemoteModeStatuses(settings.scannerToggles as unknown as Record<string, boolean>) }
         : await this.deps.externalRegistry.runEnabled(repoPath, settings.scannerToggles as unknown as Record<string, boolean>);
       findings = findings.concat(external.findings);
+      findings = findings.map((finding) => normalizeFindingRecord(finding));
       findings = findings.map((finding) => enrichFindingEvidence(finding, files));
+      findings = dedupeFindings(findings);
+      const allowlist = settings.findingAllowlist ?? [];
+      const suppressedFindings = findings.filter((finding) => isAllowlistedFinding(finding, allowlist));
+      findings = findings.filter((finding) => !isAllowlistedFinding(finding, allowlist));
+      if (suppressedFindings.length > 0) {
+        await this.updateProgress(scanId, 68, "Đã áp dụng allowlist finding", "running", {
+          log: this.createLog("info", `Đã ẩn ${suppressedFindings.length} finding theo allowlist cấu hình.`)
+        });
+      }
 
       findings.sort((a, b) => b.scoreContribution - a.scoreContribution);
 
@@ -350,7 +396,9 @@ export class ScanEngine {
           durationMs: metrics.durationMs,
           detectorCount: detectors.length,
           scanThreshold: settings.suspicionThreshold,
-          sourceMode
+          sourceMode,
+          suppressedFindings: suppressedFindings.length,
+          allowlistRulesApplied: allowlist
         }
       };
 
@@ -379,6 +427,7 @@ export class ScanEngine {
       await this.emitSnapshot(scanId);
     } finally {
       this.runningJobs.delete(scanId);
+      void this.processQueue();
       if (request.uploadedArchive?.tempFilePath) {
         await fs.rm(request.uploadedArchive.tempFilePath, { force: true });
       }
@@ -715,3 +764,25 @@ function enrichFindingEvidence(finding: Finding, files: FileRecord[]): Finding {
   };
 }
 
+
+
+function isAllowlistedFinding(finding: Finding, rules: string[]) {
+  if (!rules.length) return false;
+  return rules.some((rule) => matchesAllowlistRule(finding, rule));
+}
+
+function matchesAllowlistRule(finding: Finding, rawRule: string) {
+  const rule = rawRule.trim();
+  if (!rule) return false;
+  const parts = rule.split("@").map((item) => item.trim()).filter(Boolean);
+  return parts.every((part) => matchesAllowlistCondition(finding, part));
+}
+
+function matchesAllowlistCondition(finding: Finding, part: string) {
+  const lowered = part.toLowerCase();
+  if (lowered.startsWith("rule:")) return finding.ruleId.toLowerCase().includes(lowered.slice(5));
+  if (lowered.startsWith("path:")) return finding.filePath.toLowerCase().includes(lowered.slice(5));
+  if (lowered.startsWith("tag:")) return finding.tags.some((tag) => tag.toLowerCase().includes(lowered.slice(4)));
+  if (lowered.startsWith("category:")) return String(finding.category).toLowerCase() === lowered.slice(9);
+  return finding.ruleId.toLowerCase().includes(lowered) || finding.filePath.toLowerCase().includes(lowered);
+}
