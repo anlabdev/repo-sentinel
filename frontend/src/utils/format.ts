@@ -101,6 +101,10 @@ export function formatConfidence(value?: number) {
   return `${Math.round((value ?? 0) * 100)}%`;
 }
 
+export function formatNumber(value?: number) {
+  return Number(value ?? 0).toLocaleString("vi-VN");
+}
+
 export function toMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }

@@ -119,6 +119,10 @@ export function useRepoSentinelApp() {
     try {
       setRetryingAiReview(true);
       setError(null);
+      if (!confirmAiBudgetUsage()) {
+        setError(copy.aiDisabledForThisAction);
+        return;
+      }
       const next = await api.retryAiReview(selectedScan.id, { language });
       setSelectedScan(next);
       await refreshWorkspace();
@@ -133,6 +137,14 @@ export function useRepoSentinelApp() {
     if (!settings || !savedSettingsSnapshot) return false;
     return JSON.stringify(settings) !== JSON.stringify(savedSettingsSnapshot);
   }, [settings, savedSettingsSnapshot]);
+
+  function confirmAiBudgetUsage() {
+    if (!settings?.enableOpenAi) return true;
+    const budget = settings.openAi.budget;
+    if (budget.status === "ok") return true;
+    const message = budget.status === "exceeded" ? copy.aiBudgetConfirmExceeded : copy.aiBudgetConfirmWarning;
+    return typeof window === "undefined" ? false : window.confirm(message);
+  }
 
   async function bootstrap() {
     try {
@@ -195,15 +207,20 @@ export function useRepoSentinelApp() {
       if (form.fetchMode === "upload" && !form.uploadFile) {
         throw new Error(language === "vi" ? "Hãy chọn file .zip trước khi quét." : "Choose a .zip file before scanning.");
       }
+      let allowAi = form.allowAi;
+      if (allowAi && !confirmAiBudgetUsage()) {
+        allowAi = false;
+        setError(copy.aiDisabledForThisAction);
+      }
       const created = form.fetchMode === "upload"
         ? await api.uploadScan(form.uploadFile as File, {
             repoName: form.repoUrl.trim() || form.uploadFile?.name.replace(/\.zip$/i, ""),
-            allowAi: form.allowAi,
+            allowAi,
             language
           })
         : await api.createScan({
             repoUrl: form.repoUrl,
-            allowAi: form.allowAi,
+            allowAi,
             fetchMode: form.fetchMode,
             language
           });
@@ -221,10 +238,15 @@ export function useRepoSentinelApp() {
     }
     try {
       setError(null);
+      let allowAi = scan.aiEscalated;
+      if (allowAi && !confirmAiBudgetUsage()) {
+        allowAi = false;
+        setError(copy.aiDisabledForThisAction);
+      }
       const created = await api.createScan({
         repoUrl: scan.repoUrl,
         ...(scan.branch ? { branch: scan.branch } : {}),
-        allowAi: scan.aiEscalated,
+        allowAi,
         fetchMode: scan.sourceMode ?? "clone",
         language
       });
@@ -299,11 +321,14 @@ export function useRepoSentinelApp() {
     try {
       setSaving(true);
       setError(null);
+      const apiKeyInput = settings.openAi.apiKeyInput;
       const saved = await api.saveSettings({
         suspicionThreshold: settings.suspicionThreshold,
         enableOpenAi: settings.enableOpenAi,
         openAiModel: settings.openAiModel,
-        openAiApiKey: settings.openAi.apiKeyInput?.trim() ?? "",
+        aiTokenLimit: settings.aiTokenLimit,
+        aiTokenWarningPercent: settings.aiTokenWarningPercent,
+        openAiApiKey: apiKeyInput === undefined ? undefined : apiKeyInput.trim(),
         scannerToggles: settings.scannerToggles
       });
       setSettings(saved);

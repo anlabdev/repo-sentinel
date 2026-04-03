@@ -256,6 +256,8 @@ export interface Settings {
   suspicionThreshold: number;
   enableOpenAi: boolean;
   openAiModel: string;
+  aiTokenLimit: number;
+  aiTokenWarningPercent: number;
   scannerToggles: {
     builtIn: boolean;
     semgrep: boolean;
@@ -269,6 +271,15 @@ export interface SaveSettingsRequest extends Settings {
   openAiApiKey?: string;
 }
 
+export interface OpenAiBudgetState {
+  limitTokens: number;
+  warningPercent: number;
+  usedTokens: number;
+  remainingTokens: number;
+  status: "ok" | "warning" | "exceeded";
+  warningMessage?: string;
+}
+
 export interface OpenAiSettingsState {
   configured: boolean;
   model: string;
@@ -278,6 +289,7 @@ export interface OpenAiSettingsState {
   apiKeyPreview?: string;
   apiKeyInput?: string;
   availableModels: string[];
+  budget: OpenAiBudgetState;
 }
 
 export interface SettingsResponse extends Settings {

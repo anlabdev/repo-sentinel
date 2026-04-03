@@ -17,6 +17,8 @@ function createDefaultSettings(env: { openAiModel?: string }): StoredSettings {
     suspicionThreshold: 60,
     enableOpenAi: false,
     openAiModel: env.openAiModel ?? "gpt-4.1-mini",
+    aiTokenLimit: 1000000,
+    aiTokenWarningPercent: 80,
     openAiApiKey: undefined,
     openAiValidationStatus: "missing",
     openAiValidationMessage: "OpenAI API key is not configured.",

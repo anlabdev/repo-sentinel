@@ -3,7 +3,7 @@ import type { ScanReport, UiLanguage } from "../../../shared/src/index.js";
 import { api, type AiExplanationResponse } from "../api/client.js";
 import type { CopySet } from "../data/ui.js";
 import type { IconName } from "../types/ui.js";
-import { formatBytes, formatCategoryLabel, formatConfidence, formatDuration, languageLabel, severityLabel, statusLabel } from "../utils/format.js";
+import { formatBytes, formatCategoryLabel, formatConfidence, formatDuration, formatNumber, languageLabel, severityLabel, statusLabel } from "../utils/format.js";
 import { Icon } from "./Icon.js";
 import { OverlayScrollArea } from "./OverlayScrollArea.js";
 
@@ -84,14 +84,14 @@ export function LivePanel({
           <span className="rs-live-name">{scan.repoName}</span>
           <b>{statusLabel(scan.status, language)}</b>
         </div>
-        <div className="rs-live-right">{full && onToggleLargestFiles ? <button type="button" className="rs-secondary rs-secondary-compact rs-live-toggle" onClick={() => onToggleLargestFiles()}>{showLargestFiles ? copy.hideLargestFiles : copy.showLargestFiles}</button> : null}<span className="rs-live-summary">{metrics?.fileCount ?? scan.runtime?.filesEnumerated ?? 0}/{metrics?.fileCount ?? scan.runtime?.filesEnumerated ?? 0} {language === "vi" ? "tệp" : "files"} {formatDuration(scan.startedAt, scan.completedAt, language)}</span></div>
+        <div className="rs-live-right">{full && onToggleLargestFiles ? <button type="button" className="rs-secondary rs-secondary-compact rs-live-toggle" onClick={() => onToggleLargestFiles()}>{showLargestFiles ? copy.hideLargestFiles : copy.showLargestFiles}</button> : null}<span className="rs-live-summary">{formatNumber(metrics?.fileCount ?? scan.runtime?.filesEnumerated ?? 0)}/{formatNumber(metrics?.fileCount ?? scan.runtime?.filesEnumerated ?? 0)} {language === "vi" ? "tệp" : "files"} {formatDuration(scan.startedAt, scan.completedAt, language)}</span></div>
       </div>
       {scan.errorMessage ? <div className="rs-live-error"><strong>{copy.fileIssues}</strong><span>{scan.errorMessage}</span></div> : null}
       <div className="rs-live-progress">
         <div className="rs-mini-bar"><span style={{ width: `${scan.progress ?? 0}%` }} /></div>
-        <div className="rs-live-meta"><small>{copy.progress}: {scan.progress ?? 0}%</small><small>{scan.findings.length} {copy.findings.toLowerCase()}</small></div>
+        <div className="rs-live-meta"><small>{copy.progress}: {scan.progress ?? 0}%</small><small>{formatNumber(scan.findings.length)} {copy.findings.toLowerCase()}</small></div>
       </div>
-      {metrics ? <div className="rs-live-stats-grid"><div className="rs-live-stat"><span>{copy.totalSize}</span><strong>{formatBytes(metrics.totalBytes)}</strong></div><div className="rs-live-stat"><span>{copy.textFiles}</span><strong>{metrics.textFileCount}</strong></div><div className="rs-live-stat"><span>{copy.binaryLikeFiles}</span><strong>{metrics.binaryLikeFileCount}</strong></div><div className="rs-live-stat"><span>{copy.totalLoc}</span><strong>{metrics.totalLoc}</strong></div><div className="rs-live-stat"><span>{copy.totalTokens}</span><strong>{scan.tokenUsage?.total.totalTokens ?? 0}</strong></div></div> : null}
+      {metrics ? <div className="rs-live-stats-grid"><div className="rs-live-stat"><span>{copy.totalSize}</span><strong>{formatBytes(metrics.totalBytes)}</strong></div><div className="rs-live-stat"><span>{copy.textFiles}</span><strong>{formatNumber(metrics.textFileCount)}</strong></div><div className="rs-live-stat"><span>{copy.binaryLikeFiles}</span><strong>{formatNumber(metrics.binaryLikeFileCount)}</strong></div><div className="rs-live-stat"><span>{copy.totalLoc}</span><strong>{formatNumber(metrics.totalLoc)}</strong></div><div className="rs-live-stat"><span>{copy.totalTokens}</span><strong>{formatNumber(scan.tokenUsage?.total.totalTokens ?? 0)}</strong></div></div> : null}
       <div className={`rs-live-columns ${metrics ? "rs-live-columns-rich" : ""} ${showLargestFiles ? "" : "rs-live-columns-two"}`.trim()}>
         <div className="rs-live-col">
           <div className="rs-col-head"><Icon name="alert" />{copy.findings} <small>({scan.findings.length})</small></div>
@@ -114,7 +114,7 @@ export function LivePanel({
                   <span>{copy.source}</span><em>{languageLabel(scan.aiReview.language ?? "en", language)}</em>
                   <span>{copy.confidence}</span><em>{formatConfidence(scan.aiReview.confidence)}</em>
                   <span>{copy.reasoning}</span><em>{scan.aiReview.reasoningSummary}</em>
-                  <span>{copy.totalTokens}</span><em>{scan.aiReview.tokenUsage?.totalTokens ?? scan.tokenUsage?.byPhase?.aiReview?.totalTokens ?? 0}</em>
+                  <span>{copy.totalTokens}</span><em>{formatNumber(scan.aiReview.tokenUsage?.totalTokens ?? scan.tokenUsage?.byPhase?.aiReview?.totalTokens ?? 0)}</em>
                   <span>{copy.recommendedAction}</span><em>{scan.aiReview.recommendedAction}</em>
                   {scan.aiReview.falsePositiveNotes?.length ? <><span>{copy.falsePositive}</span><em>{scan.aiReview.falsePositiveNotes.join("; ")}</em></> : null}
                 </div>
@@ -158,7 +158,7 @@ export function LivePanel({
                       <span>{copy.summary}</span><em>{selectedFindingExplanation.summary}</em>
                       <span>{copy.reasoning}</span><em>{selectedFindingExplanation.rationale ?? selectedFindingExplanation.explanation}</em>
                       <span>{copy.confidence}</span><em>{formatConfidence(selectedFindingExplanation.confidence)}</em>
-                      <span>{copy.totalTokens}</span><em>{selectedFindingExplanation.tokenUsage?.totalTokens ?? 0}</em>
+                      <span>{copy.totalTokens}</span><em>{formatNumber(selectedFindingExplanation.tokenUsage?.totalTokens ?? 0)}</em>
                       <span>{copy.source}</span><em>{renderExplanationSourceBadge(selectedFindingExplanation.cacheSource, copy)}</em>
                       <span>{copy.recommendedAction}</span><em>{selectedFindingExplanation.recommendedAction}</em>
                       {selectedFindingExplanation.falsePositiveNote ? <><span>{copy.falsePositive}</span><em>{selectedFindingExplanation.falsePositiveNote}</em></> : null}

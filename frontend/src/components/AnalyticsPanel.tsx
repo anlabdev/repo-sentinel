@@ -3,7 +3,7 @@ import type { UiLanguage } from "../../../shared/src/index.js";
 import type { ScanListItem } from "../api/client.js";
 import type { CopySet } from "../data/ui.js";
 import type { AnalyticsFilter, AnalyticsSort } from "../types/ui.js";
-import { formatDate, statusLabel } from "../utils/format.js";
+import { formatDate, formatNumber, statusLabel } from "../utils/format.js";
 import { DropdownSelect } from "./DropdownSelect.js";
 import { Icon } from "./Icon.js";
 import { OverlayScrollArea } from "./OverlayScrollArea.js";
@@ -64,9 +64,9 @@ export function AnalyticsPanel({ scans, selectedScan, onSelectScan, onOpenLive, 
           <div className="rs-analytics-meta">
             <p>{copy.analyticsSubtitle}</p>
             <div className="rs-analytics-summary-grid">
-              <article className="rs-analytics-stat"><span>{copy.totalScansLabel}</span><strong>{scans.length}</strong></article>
-              <article className="rs-analytics-stat"><span>{copy.totalTokens}</span><strong>{totalTokens}</strong></article>
-              <article className="rs-analytics-stat"><span>{copy.avgTokensPerScan}</span><strong>{averageTokens}</strong></article>
+              <article className="rs-analytics-stat"><span>{copy.totalScansLabel}</span><strong>{formatNumber(scans.length)}</strong></article>
+              <article className="rs-analytics-stat"><span>{copy.totalTokens}</span><strong>{formatNumber(totalTokens)}</strong></article>
+              <article className="rs-analytics-stat"><span>{copy.avgTokensPerScan}</span><strong>{formatNumber(averageTokens)}</strong></article>
             </div>
           </div>
         </div>
@@ -81,7 +81,7 @@ export function AnalyticsPanel({ scans, selectedScan, onSelectScan, onOpenLive, 
             <button type="button" className="rs-secondary rs-secondary-compact" onClick={exportCsv}>{copy.exportTokenCsv}</button>
           </div>
           <OverlayScrollArea className="rs-scroll-shell rs-analytics-table-shell" viewportClassName="rs-analytics-table-body">
-            {visibleScans.length ? <div className="rs-analytics-table">{visibleScans.map((scan) => <button key={scan.id} type="button" className={`rs-analytics-row ${activeId === scan.id ? "is-selected" : ""}`.trim()} onClick={() => void onSelectScan(scan.id)}><strong>{scan.repoName}</strong><span>{statusLabel(scan.status, language)}</span><span>{scan.findingsCount}</span><span>{scan.totalTokens ?? 0}</span><span>{formatDate(scan.completedAt ?? scan.startedAt, language)}</span></button>)}</div> : <div className="rs-empty">{copy.noAnalyticsData}</div>}
+            {visibleScans.length ? <div className="rs-analytics-table">{visibleScans.map((scan) => <button key={scan.id} type="button" className={`rs-analytics-row ${activeId === scan.id ? "is-selected" : ""}`.trim()} onClick={() => void onSelectScan(scan.id)}><strong>{scan.repoName}</strong><span>{statusLabel(scan.status, language)}</span><span>{formatNumber(scan.findingsCount)}</span><span>{formatNumber(scan.totalTokens ?? 0)}</span><span>{formatDate(scan.completedAt ?? scan.startedAt, language)}</span></button>)}</div> : <div className="rs-empty">{copy.noAnalyticsData}</div>}
           </OverlayScrollArea>
         </section>
         <section className="rs-panel">
@@ -93,16 +93,16 @@ export function AnalyticsPanel({ scans, selectedScan, onSelectScan, onOpenLive, 
             </div>
             <div className="rs-analytics-detail-grid">
               <article className="rs-analytics-stat"><span>{copy.scanStatus}</span><strong>{statusLabel(activeListItem.status, language)}</strong></article>
-              <article className="rs-analytics-stat"><span>{copy.findings}</span><strong>{activeListItem.findingsCount}</strong></article>
-              <article className="rs-analytics-stat"><span>{copy.totalTokens}</span><strong>{activeListItem.totalTokens ?? selectedScan?.tokenUsage?.total.totalTokens ?? 0}</strong></article>
+              <article className="rs-analytics-stat"><span>{copy.findings}</span><strong>{formatNumber(activeListItem.findingsCount)}</strong></article>
+              <article className="rs-analytics-stat"><span>{copy.totalTokens}</span><strong>{formatNumber(activeListItem.totalTokens ?? selectedScan?.tokenUsage?.total.totalTokens ?? 0)}</strong></article>
               <article className="rs-analytics-stat"><span>{copy.lastUpdated}</span><strong>{formatDate(activeListItem.completedAt ?? activeListItem.startedAt, language)}</strong></article>
             </div>
             <div className="rs-analytics-phase-grid">
-              <article className="rs-analytics-phase"><span>{copy.aiReviewTokens}</span><strong>{breakdown?.aiReview?.totalTokens ?? activeListItem.tokenBreakdown?.aiReview ?? 0}</strong></article>
-              <article className="rs-analytics-phase"><span>{copy.aiTriageTokens}</span><strong>{breakdown?.aiTriage?.totalTokens ?? activeListItem.tokenBreakdown?.aiTriage ?? 0}</strong></article>
-              <article className="rs-analytics-phase"><span>{copy.reportExplanationTokens}</span><strong>{breakdown?.reportExplanation?.totalTokens ?? activeListItem.tokenBreakdown?.reportExplanation ?? 0}</strong></article>
-              <article className="rs-analytics-phase"><span>{copy.findingExplanationTokens}</span><strong>{findingExplanationTokens || (activeListItem.tokenBreakdown?.findingExplanations ?? 0)}</strong></article>
-              <article className="rs-analytics-phase"><span>{copy.explainedFindings}</span><strong>{Object.keys(findingExplanationMap).length || (activeListItem.tokenBreakdown?.explainedFindings ?? 0)}</strong></article>
+              <article className="rs-analytics-phase"><span>{copy.aiReviewTokens}</span><strong>{formatNumber(breakdown?.aiReview?.totalTokens ?? activeListItem.tokenBreakdown?.aiReview ?? 0)}</strong></article>
+              <article className="rs-analytics-phase"><span>{copy.aiTriageTokens}</span><strong>{formatNumber(breakdown?.aiTriage?.totalTokens ?? activeListItem.tokenBreakdown?.aiTriage ?? 0)}</strong></article>
+              <article className="rs-analytics-phase"><span>{copy.reportExplanationTokens}</span><strong>{formatNumber(breakdown?.reportExplanation?.totalTokens ?? activeListItem.tokenBreakdown?.reportExplanation ?? 0)}</strong></article>
+              <article className="rs-analytics-phase"><span>{copy.findingExplanationTokens}</span><strong>{formatNumber(findingExplanationTokens || (activeListItem.tokenBreakdown?.findingExplanations ?? 0))}</strong></article>
+              <article className="rs-analytics-phase"><span>{copy.explainedFindings}</span><strong>{formatNumber(Object.keys(findingExplanationMap).length || (activeListItem.tokenBreakdown?.explainedFindings ?? 0))}</strong></article>
             </div>
           </div> : <div className="rs-empty">{copy.noAnalyticsData}</div>}
         </section>

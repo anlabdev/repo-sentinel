@@ -16,7 +16,7 @@ import { ScanEngine } from "./services/scanners/scanEngine.js";
 const scanRequestSchema = z.object({ repoUrl: z.string().url(), branch: z.string().min(1).max(200).optional(), allowAi: z.boolean().optional(), fetchMode: z.enum(["clone", "snapshot", "remote"]).optional(), language: z.enum(["vi", "en"]).optional() });
 const uploadScanQuerySchema = z.object({ repoName: z.string().min(1).max(200).optional(), allowAi: z.enum(["true", "false"]).optional(), language: z.enum(["vi", "en"]).optional() });
 const explainSchema = z.object({ findingId: z.string().min(1).optional(), language: z.enum(["vi", "en"]).default("vi"), question: z.string().max(2000).optional(), force: z.boolean().optional() });
-const settingsSchema = z.object({ suspicionThreshold: z.number().int().min(1).max(100), enableOpenAi: z.boolean(), openAiModel: z.string().min(1).max(100), openAiApiKey: z.string().max(500).optional(), scannerToggles: z.object({ builtIn: z.boolean(), semgrep: z.boolean(), trivy: z.boolean(), osvScanner: z.boolean(), yara: z.boolean() }) });
+const settingsSchema = z.object({ suspicionThreshold: z.number().int().min(1).max(100), enableOpenAi: z.boolean(), openAiModel: z.string().min(1).max(100), aiTokenLimit: z.number().int().min(0).max(100000000), aiTokenWarningPercent: z.number().int().min(1).max(100), openAiApiKey: z.string().max(500).optional(), scannerToggles: z.object({ builtIn: z.boolean(), semgrep: z.boolean(), trivy: z.boolean(), osvScanner: z.boolean(), yara: z.boolean() }) });
 const validateOpenAiSchema = z.object({ openAiApiKey: z.string().max(500).optional(), openAiModel: z.string().min(1).max(100).optional(), language: z.enum(["vi", "en"]).optional() });
 const retryAiSchema = z.object({ question: z.string().max(2000).optional(), language: z.enum(["vi", "en"]).optional() });
 
@@ -54,12 +54,41 @@ async function ensureValidatedSettings(db: Database, aiService: OpenAiReviewServ
   return settings;
 }
 
-function toSettingsResponse(settings: StoredSettings, env: typeof import("./config/env.js").env, toolAvailability: Awaited<ReturnType<ExternalScannerRegistry["getAvailability"]>>): SettingsResponse {
+function buildOpenAiBudgetState(settings: StoredSettings, totalTokensUsed: number) {
+  const limitTokens = Math.max(0, Number(settings.aiTokenLimit ?? 1000000));
+  const warningPercent = Math.min(100, Math.max(1, Number(settings.aiTokenWarningPercent ?? 80)));
+  const remainingTokens = Math.max(0, limitTokens - totalTokensUsed);
+  const warningPoint = limitTokens > 0 ? Math.floor((limitTokens * warningPercent) / 100) : 0;
+  const status = limitTokens > 0 && totalTokensUsed >= limitTokens ? "exceeded" : limitTokens > 0 && totalTokensUsed >= warningPoint ? "warning" : "ok";
+  const warningMessage = status === "exceeded"
+    ? "Đã vượt giới hạn token AI đã cấu hình."
+    : status === "warning"
+      ? "Đang gần chạm giới hạn token AI đã cấu hình."
+      : "Ngân sách token AI vẫn còn an toàn.";
+
+  return {
+    limitTokens,
+    warningPercent,
+    usedTokens: totalTokensUsed,
+    remainingTokens,
+    status,
+    warningMessage
+  } as const;
+}
+
+async function getTotalTokensUsed(db: Database) {
+  const scans = await db.listScans() as ScanListRow[];
+  return scans.reduce((sum, scan) => sum + Number(scan.totalTokens ?? 0), 0);
+}
+
+function toSettingsResponse(settings: StoredSettings, env: typeof import("./config/env.js").env, toolAvailability: Awaited<ReturnType<ExternalScannerRegistry["getAvailability"]>>, totalTokensUsed: number): SettingsResponse {
   return {
     suspicionThreshold: settings.suspicionThreshold,
     enableOpenAi: settings.enableOpenAi,
     openAiModel: settings.openAiModel,
     scannerToggles: settings.scannerToggles,
+    aiTokenLimit: settings.aiTokenLimit,
+    aiTokenWarningPercent: settings.aiTokenWarningPercent,
     toolAvailability,
     openAi: {
       configured: Boolean(settings.openAiApiKey),
@@ -68,8 +97,9 @@ function toSettingsResponse(settings: StoredSettings, env: typeof import("./conf
       validationMessage: settings.openAiValidationMessage,
       lastValidatedAt: settings.openAiLastValidatedAt,
       apiKeyPreview: settings.openAiApiKey ? `••••••••${settings.openAiApiKey.slice(-4)}` : undefined,
-      apiKeyInput: "",
-      availableModels: [...AVAILABLE_OPENAI_MODELS]
+      apiKeyInput: undefined,
+      availableModels: [...AVAILABLE_OPENAI_MODELS],
+      budget: buildOpenAiBudgetState(settings, totalTokensUsed)
     },
     env: {
       openAiConfigured: Boolean(settings.openAiApiKey),
@@ -116,7 +146,7 @@ export async function createApp() {
 
   app.get("/api/settings", async (_req, res) => {
     const settings = await ensureValidatedSettings(db, aiService, await db.getSettings());
-    return res.json(toSettingsResponse(settings, env, await externalRegistry.getAvailability()));
+    return res.json(toSettingsResponse(settings, env, await externalRegistry.getAvailability(), await getTotalTokensUsed(db)));
   });
 
   app.post("/api/settings/validate-openai", async (req, res) => {
@@ -148,6 +178,8 @@ export async function createApp() {
       suspicionThreshold: body.suspicionThreshold,
       enableOpenAi: body.enableOpenAi && validation.validationStatus === "valid",
       openAiModel: body.openAiModel,
+      aiTokenLimit: body.aiTokenLimit,
+      aiTokenWarningPercent: body.aiTokenWarningPercent,
       openAiApiKey: requestedApiKey || undefined,
       openAiValidationStatus: validation.validationStatus,
       openAiValidationMessage: validation.validationMessage,
@@ -155,7 +187,7 @@ export async function createApp() {
       scannerToggles: body.scannerToggles
     };
     await db.saveSettings(nextSettings);
-    return res.json(toSettingsResponse(nextSettings, env, await externalRegistry.getAvailability()));
+    return res.json(toSettingsResponse(nextSettings, env, await externalRegistry.getAvailability(), await getTotalTokensUsed(db)));
   });
 
   app.post("/api/scans", async (req, res) => {

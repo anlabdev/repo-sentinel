@@ -7,6 +7,7 @@ export function DropdownSelect({ value, options, onChange, compact }: { value: s
   const [open, setOpen] = useState(false);
   const [menuStyle, setMenuStyle] = useState<{ top: number; left: number; width: number } | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const selected = options.find((option) => option.value === value) ?? options[0];
 
   useEffect(() => {
@@ -17,9 +18,11 @@ export function DropdownSelect({ value, options, onChange, compact }: { value: s
       setMenuStyle({ top: rect.bottom + 4, left: rect.left, width: rect.width });
     };
     const handlePointer = (event: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
-        setOpen(false);
+      const target = event.target as Node;
+      if (rootRef.current?.contains(target) || menuRef.current?.contains(target)) {
+        return;
       }
+      setOpen(false);
     };
     updatePosition();
     window.addEventListener("resize", updatePosition);
@@ -39,7 +42,7 @@ export function DropdownSelect({ value, options, onChange, compact }: { value: s
         <Icon name="chevron" />
       </button>
       {open && menuStyle ? createPortal(
-        <div className="rs-select-menu" style={{ top: `${menuStyle.top}px`, left: `${menuStyle.left}px`, width: `${menuStyle.width}px` }}>
+        <div ref={menuRef} className="rs-select-menu" style={{ top: `${menuStyle.top}px`, left: `${menuStyle.left}px`, width: `${menuStyle.width}px` }}>
           {options.map((option) => (
             <button
               key={option.value}

@@ -432,7 +432,7 @@ svg { width: 14px; height: 14px; }
 
 
 .rs-scan-top-flex {
-  grid-template-columns: minmax(0, 1fr) 112px;
+  grid-template-columns: minmax(0, 1fr) 104px;
 }
 
 .rs-upload-box {
@@ -3038,3 +3038,191 @@ svg { width: 14px; height: 14px; }
 .rs-command-item.is-active {
   background: #0a0f15;
 }
+
+
+.rs-settings-budget-input {
+  height: 32px;
+  width: 100%;
+  background: #0f141b;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-family: Geist Mono, ui-monospace, monospace;
+}
+
+
+.rs-settings-head-inline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  width: auto;
+}
+
+.rs-settings-head-inline h4 {
+  margin: 0;
+}
+
+.rs-settings-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+
+.rs-settings-status svg {
+  width: 14px;
+  height: 14px;
+}
+
+.rs-settings-status.is-valid {
+  color: var(--green);
+}
+
+.rs-settings-status.is-invalid {
+  color: var(--red);
+}
+
+
+.rs-settings-budget-inline {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 112px;
+  gap: 14px;
+  align-items: start;
+}
+
+.rs-settings-budget-inline label {
+  min-width: 0;
+}
+
+.rs-settings-budget-inline label:last-child {
+  width: 104px;
+}
+
+.rs-settings-budget-inline label:last-child .rs-settings-budget-input {
+  text-align: center;
+}
+
+
+.rs-budget-warning-label {
+  display: inline-flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.rs-budget-warning-label span {
+  white-space: nowrap;
+}
+
+
+.rs-settings-grid {
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.2fr) minmax(0, 0.9fr);
+}
+
+.rs-settings-budget-inline {
+  grid-template-columns: minmax(0, 1fr) 104px;
+  gap: 18px;
+}
+
+.rs-settings-block-openai {
+  gap: 14px;
+}
+
+
+.rs-settings-api-input {
+  height: 32px;
+  width: 100%;
+  background: #0f141b;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-family: Geist Mono, ui-monospace, monospace;
+}
+
+
+.rs-settings-grid > * {
+  min-width: 0;
+}
+
+.rs-settings-block {
+  min-width: 0;
+}
+
+.rs-settings-block label.rs-stack {
+  display: grid;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+}
+
+.rs-settings-budget-inline {
+  grid-template-columns: minmax(0, 1fr) 104px;
+  gap: 16px;
+}
+
+.rs-settings-budget-inline label {
+  min-width: 0;
+}
+
+.rs-settings-budget-inline .rs-settings-budget-input {
+  min-width: 0;
+}
+
+
+.rs-settings-grid {
+  grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.26fr) minmax(0, 0.92fr);
+  gap: 20px;
+}
+
+.rs-settings-block,
+.rs-settings-block-openai,
+.rs-settings-grid > * {
+  min-width: 0;
+}
+
+.rs-settings-block-openai {
+  overflow: hidden;
+  padding-right: 10px;
+  gap: 14px;
+}
+
+.rs-settings-block-openai .rs-settings-budget-inline {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  gap: 16px;
+  width: 100%;
+  max-width: 100%;
+}
+
+.rs-settings-budget-limit-field {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: none;
+}
+
+.rs-settings-budget-warning-field {
+  flex: 0 0 126px;
+  width: 126px;
+  min-width: 126px;
+}
+
+.rs-settings-budget-warning-field .rs-budget-warning-label {
+  display: block;
+  width: 100%;
+  white-space: nowrap;
+}
+
+.rs-settings-budget-warning-field .rs-budget-warning-label span {
+  white-space: nowrap;
+}
+
+.rs-settings-budget-warning-field .rs-settings-budget-input {
+  width: 100%;
+  text-align: center;
+}
+

@@ -151,7 +151,17 @@ export const COPY = {
     categoryAll: "Tất cả nhóm",
     categoryFilter: "Lọc theo nhóm",
     helpTitle: "Trợ giúp",
-    helpCommandHint: "Mẹo: Ctrl + K mở lệnh nhanh. /h để mở trợ giúp, /hs để tìm trong lịch sử scan."
+    helpCommandHint: "Mẹo: Ctrl + K mở lệnh nhanh. /h để mở trợ giúp, /hs để tìm trong lịch sử scan.",
+    aiTokenBudget: "Giới hạn token AI",
+    aiTokenWarningThreshold: "Cảnh báo tại (%)",
+    tokensUsedLabel: "Đã dùng",
+    tokensRemainingLabel: "Còn lại",
+    aiBudgetOk: "Ngân sách token AI vẫn an toàn.",
+    aiBudgetWarning: "Ngân sách token AI đang gần chạm ngưỡng. Hệ thống sẽ hỏi lại trước khi tiếp tục dùng AI.",
+    aiBudgetExceeded: "Ngân sách token AI đã chạm giới hạn. Bạn có thể tiếp tục có chủ đích hoặc quét không dùng AI.",
+    aiBudgetConfirmWarning: "Ngân sách token AI đang gần hết. Chọn OK để tiếp tục dùng AI, hoặc Cancel để tiếp tục nhưng tắt AI cho hành động này.",
+    aiBudgetConfirmExceeded: "Ngân sách token AI đã hết giới hạn. Chọn OK nếu vẫn muốn tiếp tục dùng AI, hoặc Cancel để tiếp tục nhưng tắt AI cho hành động này.",
+    aiDisabledForThisAction: "Đã tiếp tục mà không dùng AI cho hành động này."
   },
   en: {
     navOverview: "Overview",
@@ -292,7 +302,17 @@ export const COPY = {
     categoryAll: "All categories",
     categoryFilter: "Filter by category",
     helpTitle: "Help",
-    helpCommandHint: "Tip: Ctrl + K opens quick command. Use /h for help and /hs to search scan history."
+    helpCommandHint: "Tip: Ctrl + K opens quick command. Use /h for help and /hs to search scan history.",
+    aiTokenBudget: "AI token budget",
+    aiTokenWarningThreshold: "Warn at (%)",
+    tokensUsedLabel: "Used",
+    tokensRemainingLabel: "Remaining",
+    aiBudgetOk: "AI token budget is within a safe range.",
+    aiBudgetWarning: "AI token budget is nearing the configured limit. The app will ask before continuing with AI.",
+    aiBudgetExceeded: "AI token budget has reached the configured limit. You can still continue intentionally or run without AI.",
+    aiBudgetConfirmWarning: "The AI token budget is nearly exhausted. Press OK to continue with AI, or Cancel to continue without AI for this action.",
+    aiBudgetConfirmExceeded: "The AI token budget has reached its limit. Press OK to continue with AI anyway, or Cancel to continue without AI for this action.",
+    aiDisabledForThisAction: "Continued without AI for this action."
   }
 } as const;
 

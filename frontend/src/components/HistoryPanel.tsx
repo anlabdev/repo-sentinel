@@ -1,7 +1,7 @@
 import type { UiLanguage } from "../../../shared/src/index.js";
 import type { ScanListItem } from "../api/client.js";
 import type { CopySet } from "../data/ui.js";
-import { compactRepoPath, formatAgo, formatDate, formatDuration, historyIcon, historyScanType } from "../utils/format.js";
+import { compactRepoPath, formatAgo, formatDate, formatDuration, formatNumber, historyIcon, historyScanType } from "../utils/format.js";
 import { Icon } from "./Icon.js";
 import { OverlayScrollArea } from "./OverlayScrollArea.js";
 
@@ -14,8 +14,8 @@ export function HistoryPanel({ scans, query, setQuery, onDeleteAll, onOpen, onRe
   return (
     <section className={`rs-panel ${compact ? "" : "rs-history-panel-full"}`.trim()}>
       <div className="rs-panel-header rs-panel-header-split">
-        <span><Icon name="history" />{copy.scanHistory} <small>({scans.length})</small></span>
-        <div className="rs-badges"><b>{clean} {language === "vi" ? "an toàn" : "clean"}</b><b className="danger">{flagged} {language === "vi" ? "bị gắn cờ" : "flagged"}</b></div>
+        <span><Icon name="history" />{copy.scanHistory} <small>({formatNumber(scans.length)})</small></span>
+        <div className="rs-badges"><b>{formatNumber(clean)} {language === "vi" ? "an toàn" : "clean"}</b><b className="danger">{formatNumber(flagged)} {language === "vi" ? "bị gắn cờ" : "flagged"}</b></div>
       </div>
       {!compact && setQuery ? <div className="rs-history-toolbar"><input value={query ?? ""} onChange={(event) => setQuery(event.target.value)} placeholder={copy.searchHistory} />{onDeleteAll ? <button onClick={() => void onDeleteAll()}>{copy.clearAll}</button> : null}</div> : null}
       <OverlayScrollArea className="rs-scroll-shell rs-history-scroll" viewportClassName="rs-history-list">
@@ -30,7 +30,7 @@ export function HistoryPanel({ scans, query, setQuery, onDeleteAll, onOpen, onRe
               <span>{compact ? compactRepoPath(scan.repoUrl) : scan.repoUrl}</span>
             </div>
             <div className="rs-history-stats">
-              <span>{scan.findingsCount} {copy.findings.toLowerCase()}</span>
+              <span>{formatNumber(scan.findingsCount)} {copy.findings.toLowerCase()}</span>
               <span>{formatDuration(scan.startedAt, scan.completedAt)}</span>
               <span>{compact ? formatAgo(scan.completedAt ?? scan.startedAt, language) : formatDate(scan.completedAt ?? scan.startedAt, language)}</span>
             </div>
@@ -38,7 +38,7 @@ export function HistoryPanel({ scans, query, setQuery, onDeleteAll, onOpen, onRe
           </div>
         )) : <div className="rs-empty">{copy.noScanHistory}</div>}
       </OverlayScrollArea>
-      {compact && hiddenCount > 0 && onShowMore ? <button type="button" className="rs-history-more" onClick={onShowMore}>{copy.showMore} ({hiddenCount})</button> : null}
+      {compact && hiddenCount > 0 && onShowMore ? <button type="button" className="rs-history-more" onClick={onShowMore}>{copy.showMore} ({formatNumber(hiddenCount)})</button> : null}
     </section>
   );
 }

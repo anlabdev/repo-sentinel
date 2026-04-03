@@ -75,7 +75,7 @@ export class OpenAiReviewService {
 
     const language = input.language ?? "vi";
     const client = new OpenAI({ apiKey: resolved.apiKey });
-    const topFindings = selectFindingsForAi(input.findings, 6).map((finding) => serializeFindingForAi(finding));
+    const topFindings = selectFindingsForAi(input.findings, 4).map((finding) => serializeFindingForAi(finding));
 
     const prompt = [
       language === "vi"
@@ -149,7 +149,7 @@ export class OpenAiReviewService {
     const client = new OpenAI({ apiKey: resolved.apiKey });
     const candidates = input.findings
       .filter((finding) => finding.severity === "high" || finding.severity === "critical" || finding.scoreContribution >= 24 || (finding.scoreContribution >= 18 && finding.confidence <= 0.72))
-      .slice(0, 5)
+      .slice(0, 3)
       .map((finding) => {
         const file = input.files.find((item) => item.relativePath === finding.filePath);
         return {
@@ -217,7 +217,7 @@ export class OpenAiReviewService {
     }
 
     const finding = input.finding;
-    return finding.severity === "low" || (finding.severity === "medium" && finding.confidence >= 0.8 && finding.category !== "encoded-content");
+    return finding.severity === "low" || (finding.severity === "medium" && finding.confidence >= 0.72 && finding.category !== "encoded-content") || ((finding.category === "artifact" || finding.category === "filename-risk") && finding.confidence >= 0.82 && finding.severity !== "critical");
   }
 
   public buildRuleBasedFindingExplanation(input: { finding: Finding; language: UiLanguage }): AiExplanation {
@@ -322,7 +322,7 @@ export class OpenAiReviewService {
         ? "Trả về strict JSON với keys: summary, explanation, rationale, confidence, recommendedAction, falsePositiveNote, relatedSnippet. explanation nên giải thích bức tranh tổng thể."
         : "Return strict JSON with keys: summary, explanation, rationale, confidence, recommendedAction, falsePositiveNote, relatedSnippet. The explanation should cover the overall picture.",
       `Repository: ${input.repoUrl}`,
-      `Top findings: ${JSON.stringify(input.findings.slice(0, 12).map((finding) => serializeFindingForAi(finding)))}`,
+      `Top findings: ${JSON.stringify(input.findings.slice(0, 6).map((finding) => serializeFindingForAi(finding)))}`,
       input.aiReview ? `Existing AI review: ${JSON.stringify(input.aiReview)}` : "",
       input.question ? `User question: ${input.question}` : ""
     ]
@@ -406,20 +406,30 @@ function serializeFindingForAi(finding: Finding) {
   return {
     id: finding.id,
     ruleId: finding.ruleId,
-    title: finding.title,
+    title: truncateText(finding.title, 120),
     severity: finding.severity,
     confidence: finding.confidence,
     category: finding.category,
     filePath: finding.filePath,
     lineNumber: finding.lineNumber,
     detector: finding.detector,
-    summary: finding.summary,
-    rationale: finding.rationale,
-    recommendation: finding.recommendation,
-    falsePositiveNote: finding.falsePositiveNote,
-    evidenceSnippet: finding.evidenceSnippet,
-    evidence: finding.evidence
+    summary: truncateText(finding.summary, 220),
+    rationale: truncateText(finding.rationale, 260),
+    recommendation: truncateText(finding.recommendation, 220),
+    falsePositiveNote: finding.falsePositiveNote ? truncateText(finding.falsePositiveNote, 180) : undefined,
+    evidenceSnippet: finding.evidenceSnippet ? truncateText(finding.evidenceSnippet, 180) : undefined,
+    evidence: finding.evidence.slice(0, 2).map((item) => ({
+      kind: item.kind,
+      label: truncateText(item.label, 80),
+      value: truncateText(item.value, 180)
+    }))
   };
+}
+
+function truncateText(value: string | undefined, maxLength: number) {
+  if (!value) return value;
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, maxLength)}...`;
 }
 
 function extractFindingContext(file: FileRecord | undefined, finding: Finding) {

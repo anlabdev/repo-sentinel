@@ -4,7 +4,7 @@ import type { UiLanguage } from "../../../shared/src/index.js";
 import type { ScanListItem } from "../api/client.js";
 import { NAV_ITEMS, type CopySet } from "../data/ui.js";
 import type { Tab } from "../types/ui.js";
-import { navLabel } from "../utils/format.js";
+import { formatNumber, navLabel } from "../utils/format.js";
 import { Icon } from "./Icon.js";
 
 type CommandItem = {
@@ -285,7 +285,7 @@ export function AppShell({
         <header className="rs-topbar">
           <div className="rs-topbar-left">
             <strong>{copy.securityOperations}</strong>
-            <span>{totalScanned} {copy.reposScanned}</span>
+            <span>{formatNumber(totalScanned)} {copy.reposScanned}</span>
           </div>
           <div className="rs-topbar-right">
             <button type="button" className="rs-secondary rs-secondary-compact rs-command-trigger" aria-label={copy.commandLabel} onClick={() => setCommandOpen(true)}>
