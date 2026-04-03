@@ -2390,10 +2390,19 @@ svg { width: 14px; height: 14px; }
 .rs-category-filter-row {
   display: flex;
   gap: 6px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+.rs-category-filter-row::-webkit-scrollbar {
+  display: none;
 }
 
 .rs-category-filter-row button {
+  flex: 0 0 auto;
   min-height: 26px;
   padding: 0 10px;
   border-radius: 999px;
@@ -2402,6 +2411,7 @@ svg { width: 14px; height: 14px; }
   color: rgba(214, 223, 237, 0.78);
   font-size: 10px;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .rs-category-filter-row button.is-active {
