@@ -10,12 +10,15 @@ import { buildContextSnippet, isProbablyBinary, walkFiles, type FileRecord } fro
 import { createId } from "../../utils/id.js";
 import type { ExternalScannerRegistry } from "./externalScannerAdapters.js";
 import type { Detector } from "./types.js";
+import { binaryArtifactDetector } from "./detectors/binaryArtifactDetector.js";
 import { encodedPayloadDetector } from "./detectors/encodedPayloadDetector.js";
 import { installHooksDetector } from "./detectors/installHooksDetector.js";
+import { keyMaterialDetector } from "./detectors/keyMaterialDetector.js";
 import { secretPatternDetector } from "./detectors/secretPatternDetector.js";
 import { suspiciousCommandDetector } from "./detectors/suspiciousCommandDetector.js";
 import { suspiciousFilenameDetector } from "./detectors/suspiciousFilenameDetector.js";
 import { workflowRiskDetector } from "./detectors/workflowRiskDetector.js";
+import { normalizeFindingRecord } from "./finding-classifier.js";
 
 interface ScanEngineDeps {
   db: Database;
@@ -30,8 +33,10 @@ const detectors: Detector[] = [
   suspiciousCommandDetector,
   encodedPayloadDetector,
   workflowRiskDetector,
+  keyMaterialDetector,
   secretPatternDetector,
-  suspiciousFilenameDetector
+  suspiciousFilenameDetector,
+  binaryArtifactDetector
 ];
 
 const severityOrder: Record<Severity, number> = {
@@ -482,7 +487,7 @@ function collectDependencies(files: Awaited<ReturnType<typeof walkFiles>>): Depe
 
 function collectSecrets(findings: Finding[]): SecretInsight[] {
   return findings
-    .filter((finding) => finding.category === "secret" || finding.ruleId.startsWith("secret."))
+    .filter((finding) => finding.category === "secret" || finding.category === "key-material" || finding.ruleId.startsWith("secret.") || finding.ruleId.startsWith("key-material."))
     .map((finding) => ({
       filePath: finding.filePath,
       lineNumber: finding.lineNumber,
@@ -647,6 +652,51 @@ function countDirectories(files: FileRecord[]) {
 
 function compactOutput(input: string) {
   return input.replace(/\s+/g, " ").trim().slice(0, 180);
+}
+
+function selectAiReviewCandidates(findings: Finding[]) {
+  return [...findings]
+    .filter((finding) => finding.severity === "critical" || finding.severity === "high" || finding.scoreContribution >= 18 || finding.confidence <= 0.72)
+    .sort((a, b) => {
+      if (severityOrder[b.severity] !== severityOrder[a.severity]) return severityOrder[b.severity] - severityOrder[a.severity];
+      if (b.scoreContribution !== a.scoreContribution) return b.scoreContribution - a.scoreContribution;
+      return a.confidence - b.confidence;
+    })
+    .slice(0, 6);
+}
+
+function dedupeFindings(findings: Finding[]) {
+  const ranked = [...findings].sort((a, b) => {
+    if (severityOrder[b.severity] !== severityOrder[a.severity]) return severityOrder[b.severity] - severityOrder[a.severity];
+    if (b.scoreContribution !== a.scoreContribution) return b.scoreContribution - a.scoreContribution;
+    return b.confidence - a.confidence;
+  });
+
+  const strongerCoverage = new Set(
+    ranked
+      .filter((finding) => finding.category !== "filename-risk" && finding.severity !== "low")
+      .map((finding) => finding.filePath)
+  );
+
+  const seen = new Set();
+  return ranked.filter((finding) => {
+    if (finding.category === "filename-risk" && strongerCoverage.has(finding.filePath)) {
+      return false;
+    }
+
+    const evidence = compactEvidence(finding.evidenceSnippet ?? finding.summary);
+    const family = finding.category === "encoded-content" ? "encoded-family" : finding.ruleId;
+    const key = [finding.filePath, finding.lineNumber ?? 0, evidence, family].join("::");
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function compactEvidence(value: string) {
+  return value.replace(/\s+/g, " ").trim().slice(0, 140);
 }
 
 function enrichFindingEvidence(finding: Finding, files: FileRecord[]): Finding {

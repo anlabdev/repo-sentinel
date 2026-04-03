@@ -97,6 +97,7 @@ const COPY = {
     totalTokens: "Tổng token",
     cacheDb: "DB",
     cacheAi: "AI",
+    cacheRule: "Rule",
     running: "đang chạy",
     reposScannedToday: "kho mã đã quét hôm nay",
     reposFlagged: "kho mã bị gắn cờ",
@@ -132,6 +133,9 @@ const COPY = {
     aiAnalyzing: "AI đang phân tích...",
     selectFindingHint: "Chọn một phát hiện để xem AI giải thích chi tiết cho đúng tệp và dấu hiệu đó.",
     retryAiDetail: "Phân tích lại",
+    aiReviewLanguageMismatch: "Bản AI review này đang được lưu bằng",
+    refreshAiReviewLanguage: "Phân tích lại theo ngôn ngữ hiện tại",
+    aiReviewRefreshing: "Đang phân tích lại AI review...",
     analyticsTitle: "Thống kê token",
     analyticsSubtitle: "Toàn bộ project và chi tiết token theo từng pha AI.",
     project: "Project",
@@ -158,7 +162,9 @@ const COPY = {
     filterWithTokens: "Có token",
     filterAiEscalated: "Có AI escalation",
     filterHighRisk: "Rủi ro cao",
-    exportTokenCsv: "Xuất CSV token"
+    exportTokenCsv: "Xuất CSV token",
+    categoryAll: "Tất cả nhóm",
+    categoryFilter: "Lọc theo nhóm"
   },
   en: {
     navOverview: "Overview",
@@ -228,6 +234,7 @@ const COPY = {
     totalTokens: "Total tokens",
     cacheDb: "DB",
     cacheAi: "AI",
+    cacheRule: "Rule",
     running: "running",
     reposScannedToday: "repos scanned today",
     reposFlagged: "repos flagged",
@@ -263,6 +270,9 @@ const COPY = {
     aiAnalyzing: "AI is analyzing...",
     selectFindingHint: "Select a finding to see a focused AI explanation for that file and signal.",
     retryAiDetail: "Analyze again",
+    aiReviewLanguageMismatch: "This AI review is currently stored in",
+    refreshAiReviewLanguage: "Regenerate in current language",
+    aiReviewRefreshing: "Regenerating AI review...",
     analyticsTitle: "Token analytics",
     analyticsSubtitle: "All projects and AI token breakdown by phase.",
     project: "Project",
@@ -289,7 +299,9 @@ const COPY = {
     filterWithTokens: "With tokens",
     filterAiEscalated: "AI escalated",
     filterHighRisk: "High risk",
-    exportTokenCsv: "Export token CSV"
+    exportTokenCsv: "Export token CSV",
+    categoryAll: "All categories",
+    categoryFilter: "Filter by category"
   }
 } as const;
 
@@ -352,6 +364,7 @@ export function App() {
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null);
   const [findingExplanations, setFindingExplanations] = useState<Record<string, AiExplanationResponse>>({});
   const [findingExplainLoading, setFindingExplainLoading] = useState<Record<string, boolean>>({});
+  const [retryingAiReview, setRetryingAiReview] = useState(false);
   const streamRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
@@ -381,6 +394,8 @@ export function App() {
     if (typeof window !== "undefined") {
       window.localStorage.setItem("rs-language", language);
     }
+    setFindingExplanations({});
+    setFindingExplainLoading({});
   }, [language]);
 
   useEffect(() => {
@@ -430,6 +445,20 @@ export function App() {
     void explainFindingDetail(selectedFindingId, true);
   }
 
+  async function retrySelectedScanAiReview() {
+    if (!selectedScan) return;
+    try {
+      setRetryingAiReview(true);
+      setError(null);
+      const next = await api.retryAiReview(selectedScan.id, { language });
+      setSelectedScan(next);
+      await refreshWorkspace();
+    } catch (err) {
+      setError(toMessage(err, language === "vi" ? "Không thể phân tích lại AI review theo ngôn ngữ hiện tại." : "Could not regenerate the AI review in the current language."));
+    } finally {
+      setRetryingAiReview(false);
+    }
+  }
 
   const settingsDirty = useMemo(() => {
     if (!settings || !savedSettingsSnapshot) return false;
@@ -656,7 +685,7 @@ export function App() {
           </div>
           <div className="rs-topbar-right">
             <div className="rs-language-switch">
-              <button type="button" className={language === "vi" ? "active" : ""} onClick={() => setLanguage("vi")}>VN</button>
+              <button type="button" className={language === "vi" ? "active" : ""} onClick={() => setLanguage("vi")}>VI</button>
               <button type="button" className={language === "en" ? "active" : ""} onClick={() => setLanguage("en")}>EN</button>
             </div>
             <span>{copy.lastSync}: {copy.justNow}</span>
@@ -672,7 +701,7 @@ export function App() {
               <OverviewStats stats={stats} copy={copy} />
               <ScanFormCard form={form} setForm={setForm} onSubmit={submitScan} copy={copy} language={language} />
               <div className="rs-overview-grid rs-overview-main">
-                <LivePanel scan={selectedScan} copy={copy} language={language} showLargestFiles={showLargestFiles} selectedFindingId={selectedFindingId} selectedFindingExplanation={selectedFindingId ? findingExplanations[selectedFindingId] : undefined} selectedFindingLoading={selectedFindingId ? findingExplainLoading[selectedFindingId] : false} onSelectFinding={setSelectedFindingId} onRetryFindingDetail={retryFindingDetail} />
+                <LivePanel scan={selectedScan} copy={copy} language={language} showLargestFiles={showLargestFiles} enableCategoryFilter={false} selectedFindingId={selectedFindingId} selectedFindingExplanation={selectedFindingId ? findingExplanations[selectedFindingId] : undefined} selectedFindingLoading={selectedFindingId ? findingExplainLoading[selectedFindingId] : false} onSelectFinding={setSelectedFindingId} onRetryFindingDetail={retryFindingDetail} onRetryAiReview={retrySelectedScanAiReview} retryingAiReview={retryingAiReview} />
                 <HistoryPanel scans={scans} onOpen={openScan} compact onShowMore={() => setTab("history")} copy={copy} language={language} />
               </div>
               <SettingsPanel
@@ -691,7 +720,7 @@ export function App() {
           ) : null}
 
           {tab === "scan" && <ScanFormCard form={form} setForm={setForm} onSubmit={submitScan} copy={copy} language={language} />}
-          {tab === "live" && <LivePanel scan={selectedScan} full onCancel={cancelSelectedScan} copy={copy} language={language} showLargestFiles={showLargestFiles} onToggleLargestFiles={() => setShowLargestFiles((current) => !current)} selectedFindingId={selectedFindingId} selectedFindingExplanation={selectedFindingId ? findingExplanations[selectedFindingId] : undefined} selectedFindingLoading={selectedFindingId ? findingExplainLoading[selectedFindingId] : false} onSelectFinding={setSelectedFindingId} onRetryFindingDetail={retryFindingDetail} />}
+          {tab === "live" && <LivePanel scan={selectedScan} full onCancel={cancelSelectedScan} copy={copy} language={language} showLargestFiles={showLargestFiles} enableCategoryFilter onToggleLargestFiles={() => setShowLargestFiles((current) => !current)} selectedFindingId={selectedFindingId} selectedFindingExplanation={selectedFindingId ? findingExplanations[selectedFindingId] : undefined} selectedFindingLoading={selectedFindingId ? findingExplainLoading[selectedFindingId] : false} onSelectFinding={setSelectedFindingId} onRetryFindingDetail={retryFindingDetail} onRetryAiReview={retrySelectedScanAiReview} retryingAiReview={retryingAiReview} />}
           {tab === "analytics" && <AnalyticsPanel scans={scans} selectedScan={selectedScan} onSelectScan={(id) => openScan(id, false)} onOpenLive={(id) => openScan(id, true)} copy={copy} language={language} />}
           {tab === "history" && <HistoryPanel scans={filteredScans} query={query} setQuery={setQuery} onDeleteAll={deleteAllScans} onOpen={openScan} onRescan={rescan} onDelete={deleteScan} copy={copy} language={language} />}
           {tab === "settings" && settings ? (
@@ -835,11 +864,14 @@ function LivePanel({
   language,
   showLargestFiles,
   onToggleLargestFiles,
+  enableCategoryFilter,
   selectedFindingId,
   selectedFindingExplanation,
   selectedFindingLoading,
   onSelectFinding,
-  onRetryFindingDetail
+  onRetryFindingDetail,
+  onRetryAiReview,
+  retryingAiReview
 }: {
   scan: ScanReport | null;
   full?: boolean;
@@ -848,18 +880,36 @@ function LivePanel({
   language: UiLanguage;
   showLargestFiles: boolean;
   onToggleLargestFiles?: () => void;
+  enableCategoryFilter?: boolean;
   selectedFindingId?: string | null;
   selectedFindingExplanation?: AiExplanationResponse;
   selectedFindingLoading?: boolean;
   onSelectFinding?: (findingId: string) => void;
   onRetryFindingDetail?: () => void;
+  onRetryAiReview?: () => Promise<void>;
+  retryingAiReview?: boolean;
 }) {
   const aiDetailRef = useRef<HTMLDivElement | null>(null);
+  const [activeCategory, setActiveCategory] = useState<string>("all");
+
+  const scanFindings = scan?.findings ?? [];
+  const findingCategories = Array.from(new Set(scanFindings.map((finding) => finding.category))).sort((a, b) => a.localeCompare(b));
+  const resolvedCategory = enableCategoryFilter ? activeCategory : "all";
+  const visibleFindings = scanFindings.filter((finding) => resolvedCategory === "all" || finding.category === resolvedCategory);
 
   useEffect(() => {
     if (!full || !scan || !selectedFindingId || !aiDetailRef.current) return;
     aiDetailRef.current.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [full, scan, selectedFindingId]);
+
+  useEffect(() => {
+    if (!scan || !onSelectFinding) return;
+    const firstVisibleFinding = visibleFindings[0];
+    if (!firstVisibleFinding) return;
+    if (!selectedFindingId || !visibleFindings.some((finding) => finding.id === selectedFindingId)) {
+      onSelectFinding(firstVisibleFinding.id);
+    }
+  }, [onSelectFinding, scan, selectedFindingId, visibleFindings]);
 
   if (!scan) {
     return <section className={`rs-panel ${full ? "rs-full" : ""}`}><div className="rs-empty">{copy.noActiveScan}</div></section>;
@@ -869,7 +919,11 @@ function LivePanel({
   const metrics = scan.metrics;
   const fileErrors = metrics?.fileErrors ?? [];
   const largestFiles = metrics?.largestFiles ?? [];
-  const selectedFinding = scan.findings.find((finding) => finding.id === selectedFindingId) ?? scan.findings[0];
+  const groupedFindings = findingCategories
+    .filter((category) => resolvedCategory === "all" || category === resolvedCategory)
+    .map((category) => ({ category, items: visibleFindings.filter((finding) => finding.category === category) }))
+    .filter((group) => group.items.length > 0);
+  const selectedFinding = visibleFindings.find((finding) => finding.id === selectedFindingId) ?? visibleFindings[0] ?? scan.findings[0];
 
   return (
     <section className={`rs-panel ${full ? "rs-full" : ""}`}>
@@ -879,7 +933,7 @@ function LivePanel({
           <span className="rs-live-name">{scan.repoName}</span>
           <b>{statusLabel(scan.status, language)}</b>
         </div>
-        <div className="rs-live-right">{full && onToggleLargestFiles ? <button type="button" className="rs-secondary rs-secondary-compact rs-live-toggle" onClick={() => onToggleLargestFiles()}>{showLargestFiles ? copy.hideLargestFiles : copy.showLargestFiles}</button> : null}{metrics?.fileCount ?? scan.runtime?.filesEnumerated ?? 0}/{metrics?.fileCount ?? scan.runtime?.filesEnumerated ?? 0} {language === "vi" ? "tệp" : "files"} {formatDuration(scan.startedAt, scan.completedAt, language)}</div>
+        <div className="rs-live-right">{full && onToggleLargestFiles ? <button type="button" className="rs-secondary rs-secondary-compact rs-live-toggle" onClick={() => onToggleLargestFiles()}>{showLargestFiles ? copy.hideLargestFiles : copy.showLargestFiles}</button> : null}<span className="rs-live-summary">{metrics?.fileCount ?? scan.runtime?.filesEnumerated ?? 0}/{metrics?.fileCount ?? scan.runtime?.filesEnumerated ?? 0} {language === "vi" ? "tệp" : "files"} {formatDuration(scan.startedAt, scan.completedAt, language)}</span></div>
       </div>
       {scan.errorMessage ? <div className="rs-live-error"><strong>{copy.fileIssues}</strong><span>{scan.errorMessage}</span></div> : null}
       <div className="rs-live-progress">
@@ -890,10 +944,13 @@ function LivePanel({
             <div className={`rs-live-columns ${metrics ? "rs-live-columns-rich" : ""} ${showLargestFiles ? "" : "rs-live-columns-two"}`.trim()}>
         <div className="rs-live-col">
           <div className="rs-col-head"><Icon name="alert" />{copy.findings} <small>({scan.findings.length})</small></div>
-          <OverlayScrollArea className="rs-scroll-shell" viewportClassName="rs-col-list">
-            {scan.findings.slice(0, full ? 12 : 6).map((finding) => <button type="button" className={`rs-finding rs-finding-rich rs-finding-button ${selectedFinding?.id === finding.id ? "is-selected" : ""}`.trim()} key={finding.id} onClick={() => onSelectFinding?.(finding.id)}><b className={finding.severity}>{severityLabel(finding.severity, language)}</b><p>{finding.title}</p><small>{finding.filePath}{finding.lineNumber ? `:${finding.lineNumber}` : ""}</small><div className="rs-finding-copy"><span>{copy.ruleId}</span><em>{finding.ruleId}</em><span>{copy.category}</span><em>{finding.category}</em><span>{copy.confidence}</span><em>{formatConfidence(finding.confidence)}</em><span>{copy.summary}</span><em>{finding.summary}</em><span>{copy.reasoning}</span><em>{finding.rationale}</em>{finding.falsePositiveNote ? <><span>{copy.falsePositive}</span><em>{finding.falsePositiveNote}</em></> : null}{finding.evidenceSnippet ? renderCodeBlock(copy.codeContext, finding.evidenceSnippet) : null}</div></button>)}
-            {scan.findings.length === 0 ? <div className="rs-col-empty">{copy.noFindingsYet}</div> : null}
-          </OverlayScrollArea>
+          <div className="rs-live-col-body">
+            {enableCategoryFilter && scan.findings.length > 0 ? <div className="rs-category-filter-shell"><span>{copy.categoryFilter}</span><div className="rs-category-filter-row"><button type="button" className={activeCategory === "all" ? "is-active" : ""} onClick={() => setActiveCategory("all")}>{copy.categoryAll}</button>{findingCategories.map((category) => <button type="button" key={category} className={activeCategory === category ? "is-active" : ""} onClick={() => setActiveCategory(category)}>{formatCategoryLabel(category, language)}</button>)}</div></div> : null}
+            <OverlayScrollArea className="rs-scroll-shell" viewportClassName="rs-col-list">
+              {groupedFindings.map((group) => <div className="rs-finding-group" key={group.category}><div className="rs-finding-group-head"><span>{enableCategoryFilter ? formatCategoryLabel(group.category, language) : copy.findings}</span><small>{group.items.length}</small></div>{group.items.slice(0, full ? 12 : 6).map((finding) => <button type="button" className={`rs-finding rs-finding-rich rs-finding-button ${selectedFinding?.id === finding.id ? "is-selected" : ""}`.trim()} key={finding.id} onClick={() => onSelectFinding?.(finding.id)}><b className={finding.severity}>{severityLabel(finding.severity, language)}</b><p>{finding.title}</p><small>{finding.filePath}{finding.lineNumber ? `:${finding.lineNumber}` : ""}</small><div className="rs-finding-copy"><span>{copy.ruleId}</span><em>{finding.ruleId}</em><span>{copy.category}</span><em>{formatCategoryLabel(finding.category, language)}</em><span>{copy.confidence}</span><em>{formatConfidence(finding.confidence)}</em><span>{copy.summary}</span><em>{finding.summary}</em><span>{copy.reasoning}</span><em>{finding.rationale}</em>{finding.falsePositiveNote ? <><span>{copy.falsePositive}</span><em>{finding.falsePositiveNote}</em></> : null}{finding.evidenceSnippet ? renderCodeBlock(copy.codeContext, finding.evidenceSnippet) : null}</div></button>)}</div>)}
+              {visibleFindings.length === 0 ? <div className="rs-col-empty">{copy.noFindingsYet}</div> : null}
+            </OverlayScrollArea>
+          </div>
         </div>
         <div className="rs-live-col rs-live-col-ai">
           <div className="rs-col-head"><Icon name="sparkles" />{copy.aiReview} <b>{scan.aiReview ? (language === "vi" ? "bật" : "on") : (language === "vi" ? "tắt" : "off")}</b></div>
@@ -903,12 +960,14 @@ function LivePanel({
                 <div className="rs-ai-section-head">{copy.aiReview}</div>
                 <p>{scan.aiReview.summary}</p>
                 <div className="rs-finding-copy">
+                  <span>{copy.source}</span><em>{languageLabel(scan.aiReview.language ?? "en", language)}</em>
                   <span>{copy.confidence}</span><em>{formatConfidence(scan.aiReview.confidence)}</em>
                   <span>{copy.reasoning}</span><em>{scan.aiReview.reasoningSummary}</em>
                   <span>{copy.totalTokens}</span><em>{scan.aiReview.tokenUsage?.totalTokens ?? scan.tokenUsage?.byPhase?.aiReview?.totalTokens ?? 0}</em>
                   <span>{copy.recommendedAction}</span><em>{scan.aiReview.recommendedAction}</em>
                   {scan.aiReview.falsePositiveNotes?.length ? <><span>{copy.falsePositive}</span><em>{scan.aiReview.falsePositiveNotes.join("; ")}</em></> : null}
                 </div>
+                {scan.aiReview.language && scan.aiReview.language !== language ? <div className="rs-ai-language-note"><span>{copy.aiReviewLanguageMismatch} <b>{languageLabel(scan.aiReview.language, language)}</b>.</span><button type="button" className="rs-secondary rs-secondary-compact" onClick={() => void onRetryAiReview?.()} disabled={retryingAiReview}>{retryingAiReview ? copy.aiReviewRefreshing : copy.refreshAiReviewLanguage}</button></div> : null}
               </section>
               <section ref={aiDetailRef} className="rs-ai-section rs-ai-detail-section">
                 <div className="rs-ai-section-header">
@@ -921,7 +980,7 @@ function LivePanel({
                       <span>{copy.selectedFinding}</span><em>{selectedFinding.title}</em>
                       <span>{copy.ruleId}</span><em>{selectedFinding.ruleId}</em>
                       <span>{copy.detector}</span><em>{selectedFinding.detector}</em>
-                      <span>{copy.category}</span><em>{selectedFinding.category}</em>
+                      <span>{copy.category}</span><em>{formatCategoryLabel(selectedFinding.category, language)}</em>
                       <span>{copy.confidence}</span><em>{formatConfidence(selectedFinding.confidence)}</em>
                       <span>File</span><em>{selectedFinding.filePath}{selectedFinding.lineNumber ? `:${selectedFinding.lineNumber}` : ""}</em>
                       <span>{copy.summary}</span><em>{selectedFinding.summary}</em>
@@ -949,7 +1008,7 @@ function LivePanel({
                       <span>{copy.reasoning}</span><em>{selectedFindingExplanation.rationale ?? selectedFindingExplanation.explanation}</em>
                       <span>{copy.confidence}</span><em>{formatConfidence(selectedFindingExplanation.confidence)}</em>
                       <span>{copy.totalTokens}</span><em>{selectedFindingExplanation.tokenUsage?.totalTokens ?? 0}</em>
-                      <span>{copy.source}</span><em><b className={`rs-origin-badge ${(selectedFindingExplanation.cacheSource ?? "ai") === "db" ? "is-db" : "is-ai"}`.trim()}>{(selectedFindingExplanation.cacheSource ?? "ai") === "db" ? copy.cacheDb : copy.cacheAi}</b></em>
+                      <span>{copy.source}</span><em>{renderExplanationSourceBadge(selectedFindingExplanation.cacheSource, copy)}</em>
                       <span>{copy.recommendedAction}</span><em>{selectedFindingExplanation.recommendedAction}</em>
                       {selectedFindingExplanation.falsePositiveNote ? <><span>{copy.falsePositive}</span><em>{selectedFindingExplanation.falsePositiveNote}</em></> : null}
                       {selectedFindingExplanation.error ? <em>{selectedFindingExplanation.error}</em> : null}
@@ -989,6 +1048,13 @@ function renderEvidenceList(label: string, evidence: Array<{ label: string; valu
   }
 
   return <div className="rs-finding-copy rs-evidence-list">{evidence.slice(0, 4).map((item, index) => <Fragment key={`${label}-${index}`}><span>{index === 0 ? label : item.label}</span><em>{item.label}: {item.value}</em></Fragment>)}</div>;
+}
+
+function renderExplanationSourceBadge(source: AiExplanationResponse["cacheSource"] | undefined, copy: CopySet) {
+  const resolved = source ?? "ai";
+  const className = resolved === "db" ? "is-db" : resolved === "rule" ? "is-rule" : "is-ai";
+  const label = resolved === "db" ? copy.cacheDb : resolved === "rule" ? copy.cacheRule : copy.cacheAi;
+  return <b className={`rs-origin-badge ${className}`.trim()}>{label}</b>;
 }
 
 function formatConfidence(value?: number) {
@@ -1315,6 +1381,16 @@ function severityLabel(value: string, language: UiLanguage = "en") {
   if (language !== "vi") return value;
   const labels: Record<string, string> = { low: "thấp", medium: "trung bình", high: "cao", critical: "nghiêm trọng" };
   return labels[value] ?? value;
+}
+function languageLabel(value: UiLanguage, language: UiLanguage = "en") {
+  if (value === "vi") return language === "vi" ? "Tiếng Việt" : "Vietnamese";
+  return language === "vi" ? "Tiếng Anh" : "English";
+}
+function formatCategoryLabel(value: string, language: UiLanguage = "en") {
+  const labels = language === "vi"
+    ? { secret: "Secret", "key-material": "Key material", execution: "Thực thi", "encoded-content": "Nội dung mã hóa", artifact: "Artifact", "filename-risk": "Rủi ro tên file", dependency: "Phụ thuộc", workflow: "Workflow", "config-risk": "Rủi ro cấu hình", other: "Khác" }
+    : { secret: "Secret", "key-material": "Key material", execution: "Execution", "encoded-content": "Encoded content", artifact: "Artifact", "filename-risk": "Filename risk", dependency: "Dependency", workflow: "Workflow", "config-risk": "Config risk", other: "Other" };
+  return labels[value as keyof typeof labels] ?? value;
 }
 function formatAgo(value?: string, language: UiLanguage = "en") {
   if (!value) return "-";

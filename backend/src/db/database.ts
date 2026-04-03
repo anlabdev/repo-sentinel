@@ -2,6 +2,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { AiExplanation, OpenAiValidationStatus, ScanLogEntry, ScanReport, ScanTokenUsage, Settings, Severity, TokenUsage, UiLanguage } from "../../../shared/src/index.js";
+import { normalizeConfidenceValue } from "../utils/confidence.js";
+import { normalizeFindingCategory } from "../services/scanners/finding-classifier.js";
 
 export interface StoredSettings extends Settings {
   openAiApiKey?: string;
@@ -107,7 +109,20 @@ export class Database {
       );
     `);
 
+    this.ensureColumnExists("findings", "rule_id", "TEXT");
+    this.ensureColumnExists("findings", "confidence", "REAL");
+    this.ensureColumnExists("findings", "category", "TEXT");
+    this.ensureColumnExists("findings", "summary", "TEXT");
+    this.ensureColumnExists("findings", "rationale", "TEXT");
+    this.ensureColumnExists("findings", "recommendation", "TEXT");
+    this.ensureColumnExists("findings", "false_positive_note", "TEXT");
+    this.ensureColumnExists("findings", "evidence_json", "TEXT");
     this.ensureColumnExists("findings", "ai_triage_json", "TEXT");
+    this.ensureColumnExists("findings", "related_lines_json", "TEXT");
+    this.ensureColumnExists("findings", "match_count", "INTEGER");
+    this.ensureColumnExists("ai_reviews", "language", "TEXT");
+    this.ensureColumnExists("ai_reviews", "false_positive_notes_json", "TEXT");
+    this.ensureColumnExists("ai_reviews", "key_findings_json", "TEXT");
     this.ensureColumnExists("ai_reviews", "token_usage_json", "TEXT");
     const existing = this.db.prepare("SELECT COUNT(*) AS count FROM settings").get() as { count: number };
     if (existing.count === 0) {
@@ -261,24 +276,34 @@ export class Database {
         this.db.prepare("DELETE FROM ai_explanations WHERE scan_id = ?").run(report.id);
       }
       const insertFinding = this.db.prepare(`
-        INSERT INTO findings(id, scan_id, title, description, severity, score_contribution, file_path, line_number, detector, evidence_snippet, tags_json, ai_triage_json)
-        VALUES (@id, @scanId, @title, @description, @severity, @scoreContribution, @filePath, @lineNumber, @detector, @evidenceSnippet, @tagsJson, @aiTriageJson)
+        INSERT INTO findings(id, scan_id, rule_id, title, description, severity, confidence, category, summary, rationale, recommendation, false_positive_note, score_contribution, file_path, line_number, detector, evidence_snippet, evidence_json, tags_json, ai_triage_json, related_lines_json, match_count)
+        VALUES (@id, @scanId, @ruleId, @title, @description, @severity, @confidence, @category, @summary, @rationale, @recommendation, @falsePositiveNote, @scoreContribution, @filePath, @lineNumber, @detector, @evidenceSnippet, @evidenceJson, @tagsJson, @aiTriageJson, @relatedLinesJson, @matchCount)
       `);
 
       for (const finding of report.findings) {
         insertFinding.run({
           id: finding.id,
           scanId: report.id,
+          ruleId: finding.ruleId,
           title: finding.title,
           description: finding.description,
           severity: finding.severity,
+          confidence: normalizeConfidenceValue(finding.confidence, 0.5),
+          category: normalizeFindingCategory(finding),
+          summary: finding.summary,
+          rationale: finding.rationale,
+          recommendation: finding.recommendation,
+          falsePositiveNote: finding.falsePositiveNote ?? null,
           scoreContribution: finding.scoreContribution,
           filePath: finding.filePath,
           lineNumber: finding.lineNumber ?? null,
           detector: finding.detector,
           evidenceSnippet: finding.evidenceSnippet ?? null,
+          evidenceJson: JSON.stringify(finding.evidence ?? []),
           tagsJson: JSON.stringify(finding.tags),
-          aiTriageJson: finding.aiTriage ? JSON.stringify(finding.aiTriage) : null
+          aiTriageJson: finding.aiTriage ? JSON.stringify(finding.aiTriage) : null,
+          relatedLinesJson: finding.relatedLineNumbers?.length ? JSON.stringify(finding.relatedLineNumbers) : null,
+          matchCount: finding.matchCount ?? null
         });
       }
 
@@ -286,17 +311,20 @@ export class Database {
       if (report.aiReview) {
         this.db
           .prepare(`
-            INSERT INTO ai_reviews(scan_id, model, summary, severity, confidence, recommended_action, reasoning_summary, suggested_rules_json, raw_response, error, token_usage_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO ai_reviews(scan_id, model, language, summary, severity, confidence, recommended_action, reasoning_summary, false_positive_notes_json, key_findings_json, suggested_rules_json, raw_response, error, token_usage_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `)
           .run(
             report.id,
             report.aiReview.model,
+            report.aiReview.language ?? null,
             report.aiReview.summary,
             report.aiReview.severity,
-            report.aiReview.confidence,
+            normalizeConfidenceValue(report.aiReview.confidence, 0.5),
             report.aiReview.recommendedAction,
             report.aiReview.reasoningSummary,
+            JSON.stringify(report.aiReview.falsePositiveNotes ?? []),
+            JSON.stringify(report.aiReview.keyFindings ?? []),
             JSON.stringify(report.aiReview.suggestedRules),
             report.aiReview.rawResponse ?? null,
             report.aiReview.error ?? null,
@@ -394,7 +422,11 @@ export class Database {
       return null;
     }
 
-    return JSON.parse(String(row.response_json)) as AiExplanation;
+    const parsed = JSON.parse(String(row.response_json)) as AiExplanation;
+    return {
+      ...parsed,
+      confidence: normalizeConfidenceValue(parsed.confidence, 0.5)
+    } as AiExplanation;
   }
 
   public async saveAiReview(scanId: string, aiReview: ScanReport["aiReview"], aiEscalated: boolean) {
@@ -404,17 +436,20 @@ export class Database {
       if (aiReview) {
         this.db
           .prepare(`
-            INSERT INTO ai_reviews(scan_id, model, summary, severity, confidence, recommended_action, reasoning_summary, suggested_rules_json, raw_response, error, token_usage_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO ai_reviews(scan_id, model, language, summary, severity, confidence, recommended_action, reasoning_summary, false_positive_notes_json, key_findings_json, suggested_rules_json, raw_response, error, token_usage_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `)
           .run(
             scanId,
             aiReview.model,
+            aiReview.language ?? null,
             aiReview.summary,
             aiReview.severity,
-            aiReview.confidence,
+            normalizeConfidenceValue(aiReview.confidence, 0.5),
             aiReview.recommendedAction,
             aiReview.reasoningSummary,
+            JSON.stringify(aiReview.falsePositiveNotes ?? []),
+            JSON.stringify(aiReview.keyFindings ?? []),
             JSON.stringify(aiReview.suggestedRules),
             aiReview.rawResponse ?? null,
             aiReview.error ?? null,
@@ -519,11 +554,19 @@ export class Database {
       recommendation: finding.recommendation ? String(finding.recommendation) : "Review this finding manually.",
       falsePositiveNote: finding.false_positive_note ? String(finding.false_positive_note) : undefined,
       severity: finding.severity as Severity,
-      confidence: typeof finding.confidence === "number" ? Number(finding.confidence) : 0.5,
-      category: finding.category ? String(finding.category) : "other",
+      confidence: normalizeConfidenceValue(finding.confidence, 0.5),
+      category: normalizeFindingCategory({
+        ruleId: String(finding.rule_id),
+        title: String(finding.title),
+        category: finding.category ? String(finding.category) : "",
+        detector: String(finding.detector),
+        filePath: String(finding.file_path)
+      }),
       scoreContribution: Number(finding.score_contribution),
       filePath: String(finding.file_path),
       lineNumber: finding.line_number ? Number(finding.line_number) : undefined,
+      relatedLineNumbers: finding.related_lines_json ? JSON.parse(String(finding.related_lines_json)) as number[] : undefined,
+      matchCount: finding.match_count ? Number(finding.match_count) : undefined,
       detector: String(finding.detector),
       evidenceSnippet: finding.evidence_snippet ? String(finding.evidence_snippet) : undefined,
       evidence: finding.evidence_json ? JSON.parse(String(finding.evidence_json)) : [],
@@ -567,11 +610,14 @@ export class Database {
             model: String(aiRow.model),
             summary: String(aiRow.summary),
             severity: aiRow.severity as Severity,
-            confidence: Number(aiRow.confidence),
+            language: aiRow.language ? String(aiRow.language) as UiLanguage : undefined,
+            confidence: normalizeConfidenceValue(aiRow.confidence, 0.5),
             recommendedAction: String(aiRow.recommended_action),
             reasoningSummary: String(aiRow.reasoning_summary),
+            falsePositiveNotes: aiRow.false_positive_notes_json ? JSON.parse(String(aiRow.false_positive_notes_json)) as string[] : [],
+            keyFindings: aiRow.key_findings_json ? JSON.parse(String(aiRow.key_findings_json)) : [],
             suggestedRules: JSON.parse(String(aiRow.suggested_rules_json)) as string[],
-            rawResponse: aiRow.raw_response ? String(aiRow.raw_response) : undefined,
+            rawResponse: aiRow.raw_response ? normalizeStoredAiRawResponse(String(aiRow.raw_response), normalizeConfidenceValue(aiRow.confidence, 0.5)) : undefined,
             error: aiRow.error ? String(aiRow.error) : undefined,
             tokenUsage: aiRow.token_usage_json ? normalizeTokenUsage(JSON.parse(String(aiRow.token_usage_json)) as TokenUsage) : undefined
           }
@@ -590,6 +636,23 @@ export class Database {
   }
 }
 
+
+function normalizeStoredAiRawResponse(raw: string, fallbackConfidence: number) {
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const normalized = { ...parsed };
+    normalized.confidence = normalizeConfidenceValue(parsed.confidence, fallbackConfidence);
+    if (Array.isArray(parsed.keyFindings)) {
+      normalized.keyFindings = parsed.keyFindings.map((item) => ({
+        ...(item as Record<string, unknown>),
+        confidence: normalizeConfidenceValue((item as Record<string, unknown>).confidence, fallbackConfidence)
+      }));
+    }
+    return JSON.stringify(normalized);
+  } catch {
+    return raw;
+  }
+}
 
 function normalizeTokenUsage(value: TokenUsage | undefined): TokenUsage {
   return {

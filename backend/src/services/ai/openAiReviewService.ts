@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import type { AiExplanation, AiReview, Finding, FindingAiTriage, OpenAiValidationStatus, TokenUsage, UiLanguage } from "../../../../shared/src/index.js";
 import type { AppEnv } from "../../config/env.js";
 import { buildContextSnippet, type FileRecord } from "../../utils/file-system.js";
+import { normalizeConfidenceValue } from "../../utils/confidence.js";
 
 interface ReviewInput {
   repoUrl: string;
@@ -74,7 +75,7 @@ export class OpenAiReviewService {
 
     const language = input.language ?? "vi";
     const client = new OpenAI({ apiKey: resolved.apiKey });
-    const topFindings = input.findings.slice(0, 10).map((finding) => serializeFindingForAi(finding));
+    const topFindings = selectFindingsForAi(input.findings, 6).map((finding) => serializeFindingForAi(finding));
 
     const prompt = [
       language === "vi"
@@ -93,7 +94,7 @@ export class OpenAiReviewService {
       const parsed = parseJsonPayload<{
         summary: string;
         severity: AiReview["severity"];
-        confidence: number;
+        confidence: unknown;
         recommendedAction: string;
         reasoningSummary: string;
         falsePositiveNotes?: string[];
@@ -101,18 +102,24 @@ export class OpenAiReviewService {
         suggestedRules: string[];
       }>(raw);
 
+      const normalizedConfidence = normalizeConfidence(parsed.confidence, inferConfidenceFromSeverity(parsed.severity ?? topFindings[0]?.severity));
+      const normalizedKeyFindings = normalizeAiReviewKeyFindings(Array.isArray(parsed.keyFindings) ? parsed.keyFindings : []);
       return {
         model: resolved.model,
         language,
         summary: parsed.summary,
         severity: parsed.severity,
-        confidence: normalizeConfidence(parsed.confidence),
+        confidence: normalizedConfidence,
         recommendedAction: parsed.recommendedAction,
         reasoningSummary: parsed.reasoningSummary,
         falsePositiveNotes: Array.isArray(parsed.falsePositiveNotes) ? parsed.falsePositiveNotes : [],
-        keyFindings: Array.isArray(parsed.keyFindings) ? parsed.keyFindings : [],
+        keyFindings: normalizedKeyFindings,
         suggestedRules: Array.isArray(parsed.suggestedRules) ? parsed.suggestedRules : [],
-        rawResponse: raw,
+        rawResponse: stringifyNormalizedPayload({
+          ...parsed,
+          confidence: normalizedConfidence,
+          keyFindings: normalizedKeyFindings
+        }, raw),
         tokenUsage: extractTokenUsage(response)
       };
     } catch (error) {
@@ -121,7 +128,7 @@ export class OpenAiReviewService {
         language,
         summary: language === "vi" ? "Không thể hoàn tất AI review một cách sạch sẽ." : "OpenAI review could not be completed cleanly.",
         severity: "medium",
-        confidence: 0,
+        confidence: 0.4,
         recommendedAction: language === "vi" ? "Tiếp tục dựa trên các phát hiện xác định trước và thử lại AI sau." : "Continue with deterministic findings and retry AI analysis later.",
         reasoningSummary: language === "vi" ? "Bản quét đã hoàn tất nhưng phản hồi AI không thể được phân tích thành định dạng JSON có cấu trúc như hệ thống mong đợi." : "The scan finished, but the AI escalation response could not be parsed into the expected structured format.",
         falsePositiveNotes: [],
@@ -141,8 +148,8 @@ export class OpenAiReviewService {
     const language = input.language ?? "vi";
     const client = new OpenAI({ apiKey: resolved.apiKey });
     const candidates = input.findings
-      .filter((finding) => finding.severity === "high" || finding.severity === "critical" || finding.scoreContribution >= 20)
-      .slice(0, 8)
+      .filter((finding) => finding.severity === "high" || finding.severity === "critical" || finding.scoreContribution >= 24 || (finding.scoreContribution >= 18 && finding.confidence <= 0.72))
+      .slice(0, 5)
       .map((finding) => {
         const file = input.files.find((item) => item.relativePath === finding.filePath);
         return {
@@ -176,30 +183,58 @@ export class OpenAiReviewService {
           suspiciousLineNumber?: number | null;
           suspiciousText?: string | null;
           rationale: string;
-          confidence: number;
+          confidence: unknown;
           recommendedAction: string;
           falsePositiveNote?: string | null;
         }>;
       }>(raw);
 
+      const candidateMap = new Map(candidates.map((candidate) => [candidate.id, candidate]));
       const triageById: Record<string, FindingAiTriage> = {};
       for (const item of parsed.items ?? []) {
         if (!item?.findingId) continue;
+        const fallback = candidateMap.get(item.findingId);
         triageById[item.findingId] = {
-          summary: item.summary,
-          suspiciousLineNumber: typeof item.suspiciousLineNumber === "number" ? item.suspiciousLineNumber : undefined,
-          suspiciousText: item.suspiciousText?.trim() || undefined,
-          reasoning: item.rationale,
-          rationale: item.rationale,
-          confidence: normalizeConfidence(item.confidence),
-          recommendedAction: item.recommendedAction,
-          falsePositiveNote: item.falsePositiveNote?.trim() || undefined
+          summary: item.summary || fallback?.summary || "Finding requires additional review.",
+          suspiciousLineNumber: typeof item.suspiciousLineNumber === "number" ? item.suspiciousLineNumber : fallback?.lineNumber,
+          suspiciousText: item.suspiciousText?.trim() || fallback?.evidenceSnippet || undefined,
+          reasoning: item.rationale || fallback?.rationale || "The finding needs a focused manual review.",
+          rationale: item.rationale || fallback?.rationale || "The finding needs a focused manual review.",
+          confidence: normalizeConfidence(item.confidence, fallback?.confidence),
+          recommendedAction: item.recommendedAction || fallback?.recommendation || "Review this finding manually.",
+          falsePositiveNote: item.falsePositiveNote?.trim() || fallback?.falsePositiveNote || undefined
         };
       }
       return { triages: triageById, tokenUsage: extractTokenUsage(response) };
     } catch {
       return { triages: {} };
     }
+  }
+
+  public shouldUseRuleBasedFindingExplanation(input: { finding: Finding; question?: string; force?: boolean }) {
+    if (input.force || (input.question && input.question.trim())) {
+      return false;
+    }
+
+    const finding = input.finding;
+    return finding.severity === "low" || (finding.severity === "medium" && finding.confidence >= 0.8 && finding.category !== "encoded-content");
+  }
+
+  public buildRuleBasedFindingExplanation(input: { finding: Finding; language: UiLanguage }): AiExplanation {
+    const finding = input.finding;
+    return {
+      model: "rule-based",
+      language: input.language,
+      scope: "finding",
+      summary: finding.summary,
+      explanation: finding.rationale,
+      rationale: finding.rationale,
+      falsePositiveNote: finding.falsePositiveNote,
+      relatedSnippet: finding.evidenceSnippet,
+      confidence: normalizeConfidence(finding.confidence, 0.5),
+      recommendedAction: finding.recommendation,
+      cacheSource: "rule"
+    };
   }
 
   public async explainFinding(input: { repoUrl: string; finding: Finding; language: UiLanguage; question?: string }, config?: OpenAiRuntimeConfig): Promise<AiExplanation> {
@@ -230,12 +265,13 @@ export class OpenAiReviewService {
         summary: string;
         explanation: string;
         rationale?: string;
-        confidence: number;
+        confidence: unknown;
         recommendedAction: string;
         falsePositiveNote?: string;
         relatedSnippet?: string;
       }>(raw);
 
+      const normalizedConfidence = normalizeConfidence(parsed.confidence, input.finding.confidence);
       return {
         model: resolved.model,
         language: input.language,
@@ -245,9 +281,9 @@ export class OpenAiReviewService {
         rationale: parsed.rationale,
         falsePositiveNote: parsed.falsePositiveNote,
         relatedSnippet: parsed.relatedSnippet,
-        confidence: normalizeConfidence(parsed.confidence),
+        confidence: normalizedConfidence,
         recommendedAction: parsed.recommendedAction,
-        rawResponse: raw,
+        rawResponse: stringifyNormalizedPayload({ ...parsed, confidence: normalizedConfidence }, raw),
         tokenUsage: extractTokenUsage(response),
         cacheSource: "ai"
       };
@@ -264,7 +300,7 @@ export class OpenAiReviewService {
         rationale: input.finding.rationale,
         falsePositiveNote: input.finding.falsePositiveNote,
         relatedSnippet: input.finding.evidenceSnippet,
-        confidence: 0,
+        confidence: Math.max(0.3, input.finding.confidence * 0.65),
         recommendedAction: input.language === "vi" ? "Thử lại sau hoặc kiểm tra cấu hình OpenAI." : "Retry later or verify the OpenAI configuration.",
         error: sanitizeOpenAiError(error, input.language)
       };
@@ -300,12 +336,13 @@ export class OpenAiReviewService {
         summary: string;
         explanation: string;
         rationale?: string;
-        confidence: number;
+        confidence: unknown;
         recommendedAction: string;
         falsePositiveNote?: string;
         relatedSnippet?: string;
       }>(raw);
 
+      const normalizedConfidence = normalizeConfidence(parsed.confidence, input.aiReview?.confidence ?? 0.64);
       return {
         model: resolved.model,
         language: input.language,
@@ -315,9 +352,9 @@ export class OpenAiReviewService {
         rationale: parsed.rationale,
         falsePositiveNote: parsed.falsePositiveNote,
         relatedSnippet: parsed.relatedSnippet,
-        confidence: normalizeConfidence(parsed.confidence),
+        confidence: normalizedConfidence,
         recommendedAction: parsed.recommendedAction,
-        rawResponse: raw,
+        rawResponse: stringifyNormalizedPayload({ ...parsed, confidence: normalizedConfidence }, raw),
         tokenUsage: extractTokenUsage(response),
         cacheSource: "ai"
       };
@@ -331,7 +368,7 @@ export class OpenAiReviewService {
           input.language === "vi"
             ? "Yêu cầu giải thích toàn cục đã thất bại. Bạn vẫn có thể dựa vào findings xác định trước và AI review hiện có để tiếp tục phân tích."
             : "The full-report explanation request failed. You can still rely on the deterministic findings and the existing AI review to continue the investigation.",
-        confidence: 0,
+        confidence: Math.max(0.35, input.aiReview?.confidence ?? 0.5),
         recommendedAction: input.language === "vi" ? "Thử lại sau hoặc đặt câu hỏi cụ thể hơn cho từng finding." : "Retry later or ask a more specific question for an individual finding.",
         error: sanitizeOpenAiError(error, input.language)
       };
@@ -359,7 +396,7 @@ export class OpenAiReviewService {
       explanation: isVi
         ? `OpenAI API key chưa được cấu hình, nên hiện chỉ có thể giải thích ${subject} dựa trên detector xác định trước và dữ liệu cục bộ.`
         : `OpenAI API key is not configured, so ${subject} can only be explained using deterministic detectors and local scan data for now.`,
-      confidence: 0,
+      confidence: 0.3,
       recommendedAction: isVi ? "Cấu hình OpenAI API key rồi thử lại." : "Configure the OpenAI API key and try again."
     };
   }
@@ -437,17 +474,42 @@ function parseJsonPayload<T>(raw: string): T {
   throw new Error(errors[0] ?? "AI response was not valid JSON.");
 }
 
-function normalizeConfidence(value: number) {
-  if (!Number.isFinite(value)) {
-    return 0;
+function normalizeConfidence(value: unknown, fallback = 0) {
+  return normalizeConfidenceValue(value, fallback);
+}
+
+function normalizeAiReviewKeyFindings(items: AiReview["keyFindings"] | undefined) {
+  return (items ?? []).map((item) => ({
+    ...item,
+    confidence: normalizeConfidenceValue(item.confidence, inferConfidenceFromSeverity(item.severity))
+  }));
+}
+
+function stringifyNormalizedPayload(payload: Record<string, unknown>, fallback: string) {
+  try {
+    return JSON.stringify(payload);
+  } catch {
+    return fallback;
   }
-  if (value < 0) {
-    return 0;
-  }
-  if (value > 1) {
-    return 1;
-  }
-  return value;
+}
+
+function inferConfidenceFromSeverity(severity: AiReview["severity"] | undefined) {
+  if (severity === "critical") return 0.95;
+  if (severity === "high") return 0.85;
+  if (severity === "medium") return 0.65;
+  return 0.35;
+}
+
+function selectFindingsForAi(findings: Finding[], limit: number) {
+  return [...findings]
+    .filter((finding) => finding.severity === "critical" || finding.severity === "high" || finding.scoreContribution >= 18 || finding.confidence <= 0.72)
+    .sort((a, b) => {
+      const severityOrder = { critical: 4, high: 3, medium: 2, low: 1 } as const;
+      if (severityOrder[b.severity] !== severityOrder[a.severity]) return severityOrder[b.severity] - severityOrder[a.severity];
+      if (b.scoreContribution !== a.scoreContribution) return b.scoreContribution - a.scoreContribution;
+      return a.confidence - b.confidence;
+    })
+    .slice(0, limit);
 }
 
 function sanitizeOpenAiError(error: unknown, language: UiLanguage = "en") {

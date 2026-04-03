@@ -2373,3 +2373,67 @@ svg { width: 14px; height: 14px; }
   padding-top: 8px;
   border-top: 1px solid rgba(148, 163, 184, 0.12);
 }
+
+.rs-category-filter-shell {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 10px;
+}
+
+.rs-category-filter-shell > span {
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.rs-category-filter-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.rs-category-filter-row button {
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(15, 23, 36, 0.88);
+  color: rgba(214, 223, 237, 0.78);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.rs-category-filter-row button.is-active {
+  color: #dfffe4;
+  border-color: rgba(74, 222, 85, 0.26);
+  background: rgba(16, 36, 19, 0.88);
+  box-shadow: inset 0 0 0 1px rgba(74, 222, 85, 0.08);
+}
+
+.rs-finding-group {
+  display: grid;
+  gap: 8px;
+}
+
+.rs-finding-group + .rs-finding-group {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+.rs-finding-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10px;
+  color: rgba(212, 222, 240, 0.72);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.rs-finding-group-head small {
+  color: rgba(125, 152, 190, 0.72);
+  font-size: 10px;
+}

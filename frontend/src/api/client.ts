@@ -12,7 +12,7 @@ export interface AiExplanationResponse {
   recommendedAction: string;
   scope?: "finding" | "report";
   error?: string;
-  cacheSource?: "db" | "ai";
+  cacheSource?: "db" | "ai" | "rule";
   tokenUsage?: {
     inputTokens: number;
     outputTokens: number;

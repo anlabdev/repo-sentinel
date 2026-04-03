@@ -1,5 +1,7 @@
 import type { Finding, FindingCategory, FindingEvidence, Severity } from "../../../../../shared/src/index.js";
 import { createId } from "../../../utils/id.js";
+import { normalizeConfidenceValue } from "../../../utils/confidence.js";
+import { normalizeFindingCategory } from "../finding-classifier.js";
 
 interface CreateFindingInput {
   ruleId: string;
@@ -15,6 +17,8 @@ interface CreateFindingInput {
   scoreContribution?: number;
   filePath: string;
   lineNumber?: number;
+  relatedLineNumbers?: number[];
+  matchCount?: number;
   detector: string;
   evidenceSnippet?: string;
   tags?: string[];
@@ -24,7 +28,14 @@ interface CreateFindingInput {
 
 export function createFinding(input: CreateFindingInput): Finding {
   const confidence = normalizeConfidence(input.confidence ?? defaultConfidence(input.severity));
-  const recommendation = input.recommendation ?? defaultRecommendation(input.severity);
+  const category = normalizeFindingCategory({
+    ruleId: input.ruleId,
+    title: input.title,
+    category: input.category ?? "",
+    detector: input.detector,
+    filePath: input.filePath
+  });
+  const recommendation = input.recommendation ?? defaultRecommendation(category, input.severity);
   const description = input.description ?? input.summary;
 
   return {
@@ -38,10 +49,12 @@ export function createFinding(input: CreateFindingInput): Finding {
     falsePositiveNote: input.falsePositiveNote,
     severity: input.severity,
     confidence,
-    category: input.category ?? "other",
+    category,
     scoreContribution: input.scoreContribution ?? defaultScore(input.severity, confidence),
     filePath: input.filePath,
     lineNumber: input.lineNumber,
+    relatedLineNumbers: input.relatedLineNumbers,
+    matchCount: input.matchCount,
     detector: input.detector,
     evidenceSnippet: input.evidenceSnippet,
     tags: input.tags ?? [],
@@ -79,11 +92,8 @@ export function compactValue(value: string, maxLength = 180) {
   return value.replace(/\s+/g, " ").trim().slice(0, maxLength);
 }
 
-export function normalizeConfidence(value: number) {
-  if (!Number.isFinite(value)) {
-    return 0;
-  }
-  return Math.max(0, Math.min(1, value));
+export function normalizeConfidence(value: unknown, fallback = 0) {
+  return normalizeConfidenceValue(value, fallback);
 }
 
 function defaultScore(severity: Severity, confidence: number) {
@@ -118,16 +128,36 @@ function defaultConfidence(severity: Severity) {
   }
 }
 
-function defaultRecommendation(severity: Severity) {
-  switch (severity) {
-    case "critical":
-      return "Cô lập file hoặc artifact này ngay, xác minh nguồn gốc, và loại bỏ khỏi repository nếu không thật sự cần thiết.";
-    case "high":
-      return "Xem xét kỹ thủ công, xác minh ngữ cảnh sử dụng, và hạn chế chạy hoặc phân phối phần nội dung này trước khi kết luận an toàn.";
-    case "medium":
-      return "Rà soát ngữ cảnh sử dụng và chuẩn hóa lại nội dung hoặc vị trí lưu trữ nếu đây là dữ liệu hợp lệ.";
-    case "low":
+function defaultRecommendation(category: FindingCategory | string, severity: Severity) {
+  switch (category) {
+    case "execution":
+      return "Tránh dùng exec/shell spawn nếu không thật sự cần, xác thực đầu vào, và dùng API/library an toàn hơn khi có thể.";
+    case "secret":
+    case "key-material":
+      return "Rotate secret hoặc key nếu còn hiệu lực, xóa khỏi repository, và chuyển sang secret manager hoặc env injection.";
+    case "encoded-content":
+      return "Xác minh mục đích blob được encode, ghi chú rõ nếu là fixture/test asset, và tránh giấu payload trong text file nếu không cần.";
+    case "artifact":
+      return "Kiểm tra nguồn gốc file nhị phân, xác nhận nó có nên nằm trong repo hay không, và chuyển sang build artifact nếu phù hợp.";
+    case "workflow":
+      return "Rà soát trigger, quyền token, và command CI để giảm remote execution hoặc secret exposure không cần thiết.";
+    case "dependency":
+      return "Xác minh hook/phụ thuộc này có thật sự cần thiết, và ưu tiên quy trình build minh bạch thay cho script tự chạy.";
+    case "config-risk":
+      return "Chuẩn hóa file cấu hình theo dạng template an toàn và chỉ giữ lại giá trị không nhạy cảm trong repository.";
+    case "filename-risk":
+      return "Xem lại nội dung thật của file và chỉ coi tên file là tín hiệu phụ, không phải bằng chứng cuối cùng.";
     default:
-      return "Theo dõi và xác minh xem đây có phải artifact hoặc mẫu nội bộ hợp lệ hay không.";
+      switch (severity) {
+        case "critical":
+          return "Cô lập file hoặc artifact này ngay, xác minh nguồn gốc, và loại bỏ khỏi repository nếu không thật sự cần thiết.";
+        case "high":
+          return "Xem xét kỹ thủ công, xác minh ngữ cảnh sử dụng, và hạn chế chạy hoặc phân phối phần nội dung này trước khi kết luận an toàn.";
+        case "medium":
+          return "Rà soát ngữ cảnh sử dụng và chuẩn hóa lại nội dung hoặc vị trí lưu trữ nếu đây là dữ liệu hợp lệ.";
+        case "low":
+        default:
+          return "Theo dõi và xác minh xem đây có phải artifact hoặc mẫu nội bộ hợp lệ hay không.";
+      }
   }
 }

@@ -4,14 +4,14 @@ export type RepositoryFetchMode = "clone" | "snapshot" | "remote" | "upload";
 export type UiLanguage = "vi" | "en";
 export type FindingCategory =
   | "secret"
-  | "encoded"
-  | "obfuscation"
-  | "command-execution"
+  | "key-material"
+  | "execution"
+  | "encoded-content"
+  | "artifact"
+  | "filename-risk"
+  | "dependency"
   | "workflow"
-  | "install-hook"
-  | "binary-artifact"
-  | "credential-file"
-  | "filename"
+  | "config-risk"
   | "other";
 
 export interface FindingEvidence {
@@ -46,6 +46,8 @@ export interface Finding {
   scoreContribution: number;
   filePath: string;
   lineNumber?: number;
+  relatedLineNumbers?: number[];
+  matchCount?: number;
   detector: string;
   evidenceSnippet?: string;
   tags: string[];
@@ -143,7 +145,7 @@ export interface AiExplanation {
   rawResponse?: string;
   error?: string;
   tokenUsage?: TokenUsage;
-  cacheSource?: "db" | "ai";
+  cacheSource?: "db" | "ai" | "rule";
 }
 
 export interface FileTypeStat {
