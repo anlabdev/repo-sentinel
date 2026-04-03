@@ -5,12 +5,16 @@ import { normalizeConfidenceValue } from "../../../../utils/confidence.js";
 import { normalizeFindingCategory } from "../../finding-classifier.js";
 import { binaryArtifactDetector } from "../binaryArtifactDetector.js";
 import { encodedPayloadDetector } from "../encodedPayloadDetector.js";
+import { decodedPayloadExecutionDetector } from "../decodedPayloadExecutionDetector.js";
 import { exfiltrationDetector } from "../exfiltrationDetector.js";
+import { fragmentedAssemblyDetector } from "../fragmentedAssemblyDetector.js";
 import { installHooksDetector } from "../installHooksDetector.js";
 import { keyMaterialDetector } from "../keyMaterialDetector.js";
 import { persistenceBehaviorDetector } from "../persistenceBehaviorDetector.js";
 import { secretPatternDetector } from "../secretPatternDetector.js";
+import { secretExfilChainDetector } from "../secretExfilChainDetector.js";
 import { suspiciousCommandDetector } from "../suspiciousCommandDetector.js";
+import { stagedPayloadDetector } from "../stagedPayloadDetector.js";
 import { suspiciousFilenameDetector } from "../suspiciousFilenameDetector.js";
 
 function file(relativePath: string, content: string | undefined, size = content?.length ?? 2048, extension?: string): FileRecord {
@@ -157,4 +161,74 @@ test("exfiltrationDetector detects secret-like outbound requests", async () => {
 
   assert.equal(findings[0]?.ruleId, "execution.exfiltration.secret-over-network");
   assert.equal(findings[0]?.category, "execution");
+});
+
+test("stagedPayloadDetector detects download-write-execute chains", async () => {
+  const findings = await stagedPayloadDetector.detect({
+    files: [file("src/loader.py", `import requests
+payload = requests.get(url).text
+with open("tmp.exe", "wb") as fh:
+    fh.write(payload.encode())
+subprocess.run("tmp.exe")`)]
+  });
+
+  assert.equal(findings[0]?.ruleId, "execution.chain.download-write-execute");
+  assert.equal(findings[0]?.category, "execution");
+  assert.ok((findings[0]?.relatedLineNumbers?.length ?? 0) >= 3);
+});
+
+
+
+test("secretExfilChainDetector detects secret-read to outbound request chains", async () => {
+  const findings = await secretExfilChainDetector.detect({
+    files: [file("src/beacon.ts", "const token = process.env.API_TOKEN; await fetch(url, { headers: { Authorization: `Bearer ${token}` } });")]
+  });
+
+  assert.equal(findings[0]?.ruleId, "execution.chain.secret-read-exfiltration");
+  assert.equal(findings[0]?.category, "execution");
+  assert.ok((findings[0]?.relatedLineNumbers?.length ?? 0) >= 1);
+});
+
+test("decodedPayloadExecutionDetector detects decode-write-execute chains", async () => {
+  const findings = await decodedPayloadExecutionDetector.detect({
+    files: [file("src/dropper.js", `const raw = atob(payload);
+fs.writeFileSync("tmp.exe", raw);
+exec("tmp.exe");`) ]
+  });
+
+  assert.equal(findings[0]?.ruleId, "execution.chain.decode-write-execute");
+  assert.equal(findings[0]?.category, "execution");
+  assert.ok((findings[0]?.relatedLineNumbers?.length ?? 0) >= 3);
+});
+
+
+test("fragmentedAssemblyDetector detects suspicious payload assembled across files", async () => {
+  const base64 = "QUJD".repeat(40);
+  const findings = await fragmentedAssemblyDetector.detect({
+    files: [
+      file("src/loader.js", `const payload = fs.readFileSync("parts/a.txt", "utf8") + fs.readFileSync("parts/b.txt", "utf8");
+exec(payload);`),
+      file("src/parts/a.txt", base64.slice(0, 24)),
+      file("src/parts/b.txt", base64.slice(24))
+    ]
+  });
+
+  assert.equal(findings[0]?.ruleId, "encoded.fragmented-base64-assembly");
+  assert.equal(findings[0]?.category, "encoded-content");
+  assert.ok((findings[0]?.matchCount ?? 0) >= 2);
+});
+
+test("fragmentedAssemblyDetector skips benign multi-file assembly", async () => {
+  const findings = await fragmentedAssemblyDetector.detect({
+    files: [
+      file("src/joiner.py", `a = open("parts/a.txt").read()
+b = open("parts/b.txt").read()
+value = a + b
+print(value)`),
+      file("src/parts/a.txt", "hello "),
+      file("src/parts/b.txt", "world")
+    ]
+  });
+
+  assert.equal(findings.length, 0);
 });

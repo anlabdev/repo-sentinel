@@ -54,6 +54,7 @@ export interface WalkProgress {
   filesEnumerated: number;
   directoriesEnumerated: number;
   textFilesRead: number;
+  currentFile?: string;
 }
 
 interface WalkFilesOptions {
@@ -70,7 +71,8 @@ export async function walkFiles(rootDir: string, options?: WalkFilesOptions): Pr
   const progress: WalkProgress = {
     filesEnumerated: 0,
     directoriesEnumerated: 1,
-    textFilesRead: 0
+    textFilesRead: 0,
+    currentFile: undefined
   };
 
   async function visit(currentDir: string) {
@@ -124,6 +126,7 @@ export async function walkFiles(rootDir: string, options?: WalkFilesOptions): Pr
         readError
       });
       progress.filesEnumerated += 1;
+      progress.currentFile = relativePath;
       await options?.onProgress?.(progress);
     }
   }

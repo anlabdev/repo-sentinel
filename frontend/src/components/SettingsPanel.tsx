@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { SettingsResponse } from "../../../shared/src/index.js";
 import { MODEL_OPTIONS, PARALLEL_SCAN_OPTIONS, type CopySet } from "../data/ui.js";
 import { DropdownSelect } from "./DropdownSelect.js";
@@ -71,7 +71,14 @@ export function SettingsPanel({
   ].filter(Boolean).join("\n");
   const allowlistRules = settings.findingAllowlist;
   const [copiedAllowlistPart, setCopiedAllowlistPart] = useState<string | null>(null);
+  const [allowlistQuery, setAllowlistQuery] = useState("");
   const highlightedRuleRef = useRef<HTMLDivElement | null>(null);
+
+  const filteredAllowlistRules = useMemo(() => {
+    const q = allowlistQuery.trim().toLowerCase();
+    if (!q) return allowlistRules;
+    return allowlistRules.filter((rule) => rule.toLowerCase().includes(q));
+  }, [allowlistQuery, allowlistRules]);
 
   useEffect(() => {
     if (!highlightedAllowlistRule || !highlightedRuleRef.current) return;
@@ -165,60 +172,76 @@ export function SettingsPanel({
             <label className="rs-stack rs-settings-allowlist-field">
               <span>{copy.findingAllowlist}</span>
               {allowlistRules.length ? (
-                <div className="rs-settings-allowlist-list">
-                  {allowlistRules.map((rule) => {
-                    const isHighlighted = highlightedAllowlistRule === rule;
-                    return (
-                      <div
-                        className={`rs-settings-allowlist-item ${isHighlighted ? "is-highlighted" : ""}`.trim()}
-                        key={rule}
-                        ref={isHighlighted ? highlightedRuleRef : null}
-                      >
-                        <div className="rs-settings-allowlist-copy">
-                          <div className="rs-settings-allowlist-badges">
-                            {parseAllowlistRule(rule).map((part, index) => {
-                              const partKey = `${rule}-${part.kind}-${index}`;
-                              const partClass = `rs-settings-allowlist-badge is-${part.kind.replace(/[^a-z-]/gi, "").toLowerCase() || "rule"} ${copiedAllowlistPart === partKey ? "is-copied" : ""}`.trim();
-                              return (
-                                <button
-                                  type="button"
-                                  className={partClass}
-                                  key={partKey}
-                                  title={part.value}
-                                  onClick={async () => {
-                                    if (!navigator?.clipboard?.writeText) return;
-                                    await navigator.clipboard.writeText(`${part.kind}:${part.value}`);
-                                    setCopiedAllowlistPart(partKey);
-                                    window.setTimeout(() => setCopiedAllowlistPart((current) => current === partKey ? null : current), 1200);
-                                  }}
-                                >
-                                  <b>{part.kind}</b>
-                                  <em>{part.value}</em>
-                                </button>
-                              );
-                            })}
-                          </div>
-
-                          <button
-                            type="button"
-                            className={`rs-settings-allowlist-rule ${copiedAllowlistPart === `${rule}-full` ? "is-copied" : ""} ${isHighlighted ? "is-highlighted" : ""}`.trim()}
-                            title={rule}
-                            onClick={async () => {
-                              if (!navigator?.clipboard?.writeText) return;
-                              await navigator.clipboard.writeText(rule);
-                              setCopiedAllowlistPart(`${rule}-full`);
-                              window.setTimeout(() => setCopiedAllowlistPart((current) => current === `${rule}-full` ? null : current), 1200);
-                            }}
+                <>
+                  <div className="rs-settings-allowlist-toolbar">
+                    <input
+                      className="rs-settings-allowlist-search"
+                      type="text"
+                      value={allowlistQuery}
+                      placeholder={copy.allowlistSearchPlaceholder}
+                      onChange={(event) => setAllowlistQuery(event.target.value)}
+                    />
+                    <small>{filteredAllowlistRules.length}/{allowlistRules.length}</small>
+                  </div>
+                  {filteredAllowlistRules.length ? (
+                    <div className="rs-settings-allowlist-list">
+                      {filteredAllowlistRules.map((rule) => {
+                        const isHighlighted = highlightedAllowlistRule === rule;
+                        return (
+                          <div
+                            className={`rs-settings-allowlist-item ${isHighlighted ? "is-highlighted" : ""}`.trim()}
+                            key={rule}
+                            ref={isHighlighted ? highlightedRuleRef : null}
                           >
-                            <code>{rule}</code>
-                          </button>
-                        </div>
+                            <div className="rs-settings-allowlist-copy">
+                              <div className="rs-settings-allowlist-badges">
+                                {parseAllowlistRule(rule).map((part, index) => {
+                                  const partKey = `${rule}-${part.kind}-${index}`;
+                                  const partClass = `rs-settings-allowlist-badge is-${part.kind.replace(/[^a-z-]/gi, "").toLowerCase() || "rule"} ${copiedAllowlistPart === partKey ? "is-copied" : ""}`.trim();
+                                  return (
+                                    <button
+                                      type="button"
+                                      className={partClass}
+                                      key={partKey}
+                                      title={part.value}
+                                      onClick={async () => {
+                                        if (!navigator?.clipboard?.writeText) return;
+                                        await navigator.clipboard.writeText(`${part.kind}:${part.value}`);
+                                        setCopiedAllowlistPart(partKey);
+                                        window.setTimeout(() => setCopiedAllowlistPart((current) => current === partKey ? null : current), 1200);
+                                      }}
+                                    >
+                                      <b>{part.kind}</b>
+                                      <em>{part.value}</em>
+                                    </button>
+                                  );
+                                })}
+                              </div>
 
-                        <button type="button" className="rs-secondary rs-secondary-compact rs-settings-allowlist-remove" onClick={() => setSettings((current) => current ? { ...current, findingAllowlist: current.findingAllowlist.filter((entry) => entry !== rule) } : current)}><Icon name="trash" />{copy.delete}</button>
-                      </div>
-                    );
-                  })}
-                </div>
+                              <button
+                                type="button"
+                                className={`rs-settings-allowlist-rule ${copiedAllowlistPart === `${rule}-full` ? "is-copied" : ""} ${isHighlighted ? "is-highlighted" : ""}`.trim()}
+                                title={rule}
+                                onClick={async () => {
+                                  if (!navigator?.clipboard?.writeText) return;
+                                  await navigator.clipboard.writeText(rule);
+                                  setCopiedAllowlistPart(`${rule}-full`);
+                                  window.setTimeout(() => setCopiedAllowlistPart((current) => current === `${rule}-full` ? null : current), 1200);
+                                }}
+                              >
+                                <code>{rule}</code>
+                              </button>
+                            </div>
+
+                            <button type="button" className="rs-secondary rs-secondary-compact rs-settings-allowlist-remove" onClick={() => setSettings((current) => current ? { ...current, findingAllowlist: current.findingAllowlist.filter((entry) => entry !== rule) } : current)}><Icon name="trash" />{copy.delete}</button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="rs-settings-allowlist-empty">{copy.allowlistNoMatch}</div>
+                  )}
+                </>
               ) : null}
               <textarea className="rs-settings-textarea" rows={5} value={settings.findingAllowlist.join("\n")} placeholder={"rule:filename-risk\npath:docs/\nrule:artifact.executable.package@path:fixtures/"} onChange={(event) => { const nextValue = event.target.value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean); setSettings((current) => current ? { ...current, findingAllowlist: nextValue } : current); }} />
               <small>{copy.findingAllowlistHint}</small>

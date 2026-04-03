@@ -43,6 +43,18 @@ export const COPY = {
     startScan: "Bắt đầu quét",
     scanHistory: "Lịch sử quét",
     showMore: "Xem thêm",
+    historyFilter: "Lọc",
+    historySort: "Sắp xếp",
+    historyFilterAll: "Tất cả",
+    historyFilterAi: "Có AI",
+    historyFilterZip: "ZIP",
+    historyFilterRepo: "Repo",
+    historyFilterFlagged: "Bị gắn cờ",
+    historyFilterClean: "An toàn",
+    historySortRecent: "Mới nhất",
+    historySortRisk: "Rủi ro cao",
+    historySortFindings: "Nhiều phát hiện",
+    historySortTokens: "Nhiều token",
     settings: "Cài đặt",
     riskThreshold: "Ngưỡng rủi ro",
     autoEscalate: "Tự leo thang tại",
@@ -168,7 +180,9 @@ export const COPY = {
     addToAllowlist: "Thêm vào allowlist",
     addToAllowlistSaved: "Đã thêm vào allowlist",
     addToAllowlistExists: "Đã có trong allowlist",
-    addToAllowlistSaving: "Đang lưu allowlist..."
+    addToAllowlistSaving: "Đang lưu allowlist...",
+    allowlistSearchPlaceholder: "Tìm rule / path / tag",
+    allowlistNoMatch: "Không có rule nào khớp"
   },
   en: {
     navOverview: "Overview",
@@ -201,6 +215,18 @@ export const COPY = {
     startScan: "Start Scan",
     scanHistory: "Scan History",
     showMore: "Show more",
+    historyFilter: "Filter",
+    historySort: "Sort",
+    historyFilterAll: "All",
+    historyFilterAi: "With AI",
+    historyFilterZip: "ZIP",
+    historyFilterRepo: "Repo",
+    historyFilterFlagged: "Flagged",
+    historyFilterClean: "Clean",
+    historySortRecent: "Most recent",
+    historySortRisk: "Highest risk",
+    historySortFindings: "Most findings",
+    historySortTokens: "Most tokens",
     settings: "Settings",
     riskThreshold: "Risk Threshold",
     autoEscalate: "Auto-Escalate at",
@@ -326,7 +352,9 @@ export const COPY = {
     addToAllowlist: "Add to allowlist",
     addToAllowlistSaved: "Added to allowlist",
     addToAllowlistExists: "Already allowlisted",
-    addToAllowlistSaving: "Saving allowlist..."
+    addToAllowlistSaving: "Saving allowlist...",
+    allowlistSearchPlaceholder: "Search rule / path / tag",
+    allowlistNoMatch: "No matching rules"
   }
 } as const;
 
@@ -368,5 +396,6 @@ export const INITIAL_FORM_STATE: FormState = {
   allowAi: true,
   includeNodeModules: false
 };
+
 
 

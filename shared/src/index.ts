@@ -201,9 +201,12 @@ export interface ScanRuntime {
   filesEnumerated: number;
   directoriesEnumerated: number;
   textFilesRead: number;
+  currentFile?: string;
   throughputFilesPerSecond?: number;
   currentPhaseFileCount?: number;
   currentDetector?: string;
+  currentDetectorIndex?: number;
+  currentDetectorTotal?: number;
   cloneTimedOut?: boolean;
   stuck?: boolean;
   lastActivityAt?: string;
@@ -347,4 +350,6 @@ export interface HealthResponse {
   timestamp: string;
   version: string;
 }
+
+
 

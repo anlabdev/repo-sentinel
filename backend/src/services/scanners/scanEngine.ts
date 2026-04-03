@@ -12,15 +12,21 @@ import type { ExternalScannerRegistry } from "./externalScannerAdapters.js";
 import type { Detector } from "./types.js";
 import { binaryArtifactDetector } from "./detectors/binaryArtifactDetector.js";
 import { encodedPayloadDetector } from "./detectors/encodedPayloadDetector.js";
+import { decodedPayloadExecutionDetector } from "./detectors/decodedPayloadExecutionDetector.js";
 import { exfiltrationDetector } from "./detectors/exfiltrationDetector.js";
+import { fragmentedAssemblyDetector } from "./detectors/fragmentedAssemblyDetector.js";
 import { installHooksDetector } from "./detectors/installHooksDetector.js";
 import { keyMaterialDetector } from "./detectors/keyMaterialDetector.js";
 import { persistenceBehaviorDetector } from "./detectors/persistenceBehaviorDetector.js";
 import { secretPatternDetector } from "./detectors/secretPatternDetector.js";
+import { secretExfilChainDetector } from "./detectors/secretExfilChainDetector.js";
 import { suspiciousCommandDetector } from "./detectors/suspiciousCommandDetector.js";
+import { stagedPayloadDetector } from "./detectors/stagedPayloadDetector.js";
 import { suspiciousFilenameDetector } from "./detectors/suspiciousFilenameDetector.js";
 import { workflowRiskDetector } from "./detectors/workflowRiskDetector.js";
 import { normalizeFindingRecord } from "./finding-classifier.js";
+import { correlateFindings } from "./correlation.js";
+import { buildRelationIndex, enrichFindingWithRelations } from "./fileRelations.js";
 
 interface ScanEngineDeps {
   db: Database;
@@ -33,8 +39,12 @@ interface ScanEngineDeps {
 const detectors: Detector[] = [
   installHooksDetector,
   suspiciousCommandDetector,
+  stagedPayloadDetector,
+  decodedPayloadExecutionDetector,
   persistenceBehaviorDetector,
   exfiltrationDetector,
+  fragmentedAssemblyDetector,
+  secretExfilChainDetector,
   encodedPayloadDetector,
   workflowRiskDetector,
   keyMaterialDetector,
@@ -270,6 +280,7 @@ export class ScanEngine {
                 filesEnumerated: progress.filesEnumerated,
                 directoriesEnumerated: progress.directoriesEnumerated,
                 textFilesRead: progress.textFilesRead,
+                currentFile: progress.currentFile,
                 currentPhaseFileCount: progress.filesEnumerated,
                 throughputFilesPerSecond: Number((progress.filesEnumerated / elapsedSeconds).toFixed(1))
               }
@@ -284,6 +295,7 @@ export class ScanEngine {
           filesEnumerated: metrics.fileCount,
           directoriesEnumerated: metrics.directoryCount,
           textFilesRead: metrics.textFileCount,
+          currentFile: undefined,
           throughputFilesPerSecond: Number((metrics.fileCount / Math.max(metrics.durationMs / 1000, 1)).toFixed(1))
         }
       });
@@ -292,13 +304,14 @@ export class ScanEngine {
       let findings: Finding[] = [];
       const detectorTimings: DetectorTiming[] = [];
       if (settings.scannerToggles.builtIn) {
-        for (const detector of detectors) {
+        for (const [detectorIndex, detector] of detectors.entries()) {
           this.throwIfCancelled(signal);
           const detectorStartedAt = Date.now();
           await this.updateProgress(scanId, 50, `Đang chạy detector nội bộ (${detector.name})`, "running", {
             log: this.createLog("info", `Đang chạy detector: ${detector.name}`),
             runtimePatch: {
               currentPhaseFileCount: files.length,
+              currentFile: undefined,
               currentDetector: detector.name
             }
           });
@@ -312,6 +325,7 @@ export class ScanEngine {
           await this.updateProgress(scanId, 58, `Đã chạy xong detector (${detector.name})`, "running", {
             runtimePatch: {
               detectorTimings: [...detectorTimings],
+              currentFile: undefined,
               currentDetector: undefined
             }
           });
@@ -331,7 +345,10 @@ export class ScanEngine {
       findings = findings.concat(external.findings);
       findings = findings.map((finding) => normalizeFindingRecord(finding));
       findings = findings.map((finding) => enrichFindingEvidence(finding, files));
-      findings = dedupeFindings(findings);
+      const relationIndex = buildRelationIndex(files);
+      findings = findings.map((finding) => enrichFindingWithRelations(finding, relationIndex));
+      const correlation = correlateFindings(findings);
+      findings = dedupeFindings(correlation.findings);
       const allowlist = settings.findingAllowlist ?? [];
       const suppressedFindings = findings.filter((finding) => isAllowlistedFinding(finding, allowlist));
       findings = findings.filter((finding) => !isAllowlistedFinding(finding, allowlist));
@@ -398,6 +415,8 @@ export class ScanEngine {
           scanThreshold: settings.suspicionThreshold,
           sourceMode,
           suppressedFindings: suppressedFindings.length,
+          correlatedFindings: correlation.suppressedCount,
+          relationHints: relationIndex.reverse.size,
           allowlistRulesApplied: allowlist
         }
       };
@@ -484,7 +503,6 @@ export class ScanEngine {
     this.events.emit("scan-update", scanId, scan);
   }
 }
-
 
 function buildScanTokenUsage(aiReviewUsage?: TokenUsage, aiTriageUsage?: TokenUsage): ScanTokenUsage | undefined {
   if (!aiReviewUsage && !aiTriageUsage) {
@@ -764,8 +782,6 @@ function enrichFindingEvidence(finding: Finding, files: FileRecord[]): Finding {
   };
 }
 
-
-
 function isAllowlistedFinding(finding: Finding, rules: string[]) {
   if (!rules.length) return false;
   return rules.some((rule) => matchesAllowlistRule(finding, rule));
@@ -786,3 +802,5 @@ function matchesAllowlistCondition(finding: Finding, part: string) {
   if (lowered.startsWith("category:")) return String(finding.category).toLowerCase() === lowered.slice(9);
   return finding.ruleId.toLowerCase().includes(lowered) || finding.filePath.toLowerCase().includes(lowered);
 }
+
+

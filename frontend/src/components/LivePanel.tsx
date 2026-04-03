@@ -3,7 +3,7 @@ import type { ScanReport, UiLanguage } from "../../../shared/src/index.js";
 import { api, type AiExplanationResponse } from "../api/client.js";
 import type { CopySet } from "../data/ui.js";
 import type { IconName } from "../types/ui.js";
-import { formatBytes, formatCategoryLabel, formatConfidence, formatDuration, formatNumber, languageLabel, severityLabel, statusLabel } from "../utils/format.js";
+import { formatBytes, formatCategoryLabel, formatConfidence, formatDetectorLabel, formatDuration, formatEtaSeconds, formatNumber, languageLabel, severityLabel, statusLabel } from "../utils/format.js";
 import { Icon } from "./Icon.js";
 import { OverlayScrollArea } from "./OverlayScrollArea.js";
 
@@ -74,8 +74,20 @@ export function LivePanel({
 
   const liveStatusIcon: IconName = scan.status === "completed" ? "check" : scan.status === "failed" ? "close" : "clock";
   const metrics = scan.metrics;
+  const runtime = scan.runtime;
   const fileErrors = metrics?.fileErrors ?? [];
   const largestFiles = metrics?.largestFiles ?? [];
+  const lastRuntimeLog = runtime?.logs?.length ? runtime.logs[runtime.logs.length - 1] : null;
+  const showRuntimeDetail = full && (scan.status === "queued" || scan.status === "running");
+  const completedDetectorCount = runtime?.detectorTimings?.length ?? 0;
+  const detectorStepLabel = runtime?.currentDetector && runtime.currentDetectorIndex && runtime.currentDetectorTotal
+    ? `${runtime.currentDetectorIndex}/${runtime.currentDetectorTotal}`
+    : completedDetectorCount > 0 && runtime?.currentDetectorTotal
+      ? `${completedDetectorCount}/${runtime.currentDetectorTotal}`
+      : null;
+  const detectorEtaSeconds = runtime?.currentDetectorTotal && completedDetectorCount > 0 && completedDetectorCount < runtime.currentDetectorTotal
+    ? Math.max(1, Math.round((runtime.detectorTimings.reduce((sum, timing) => sum + timing.durationMs, 0) / completedDetectorCount) * (runtime.currentDetectorTotal - completedDetectorCount) / 1000))
+    : null;
   const groupedFindings = findingCategories
     .filter((category) => resolvedCategory === "all" || category === resolvedCategory)
     .map((category) => ({ category, items: visibleFindings.filter((finding) => finding.category === category) }))
@@ -83,6 +95,33 @@ export function LivePanel({
   const selectedFinding = visibleFindings.find((finding) => finding.id === selectedFindingId) ?? visibleFindings[0] ?? scan.findings[0];
   const selectedFindingAllowlistRule = selectedFinding ? `rule:${selectedFinding.ruleId}@path:${selectedFinding.filePath}` : null;
   const selectedFindingAlreadyAllowlisted = selectedFindingAllowlistRule ? findingAllowlist.includes(selectedFindingAllowlistRule) : false;
+  const phaseKey = runtime?.currentDetector
+    ? "detectors"
+    : scan.currentStep?.includes("OpenAI") || scan.currentStep?.includes("AI")
+      ? "ai"
+      : scan.currentStep?.includes("liệt kê") || scan.currentStep?.includes("tệp") || scan.currentStep?.includes("snapshot") || scan.currentStep?.includes("clone") || scan.currentStep?.includes("zip")
+        ? "enumeration"
+        : scan.status === "completed"
+          ? "done"
+          : "enumeration";
+  const phaseItems = [
+    { key: "enumeration", label: language === "vi" ? "Liệt kê tệp" : "Enumerating" },
+    { key: "detectors", label: language === "vi" ? "Detector nội bộ" : "Detectors" },
+    { key: "ai", label: language === "vi" ? "AI / Hoàn tất" : "AI / Finish" }
+  ];
+  const runtimeTimeline = (runtime?.logs ?? []).slice(-4).reverse().map((entry) => {
+    const message = entry.message.toLowerCase();
+    const phase = message.includes("clone") || message.includes("snapshot") || message.includes("zip") || message.includes("giải nén") || message.includes("nạp file")
+      ? (language === "vi" ? "Nguồn" : "Source")
+      : message.includes("liệt kê") || message.includes("tệp")
+        ? (language === "vi" ? "Liệt kê" : "Enumerate")
+        : message.includes("detector")
+          ? (language === "vi" ? "Detector" : "Detector")
+          : message.includes("openai") || message.includes("ai")
+            ? "AI"
+            : (language === "vi" ? "Runtime" : "Runtime");
+    return { ...entry, phase };
+  });
 
   return (
     <section className={`rs-panel ${full ? "rs-full" : ""}`}>
@@ -99,6 +138,30 @@ export function LivePanel({
         <div className="rs-mini-bar"><span style={{ width: `${scan.progress ?? 0}%` }} /></div>
         <div className="rs-live-meta"><small>{copy.progress}: {scan.progress ?? 0}%</small><small>{formatNumber(scan.findings.length)} {copy.findings.toLowerCase()}</small></div>
       </div>
+      {showRuntimeDetail ? <div className="rs-live-runtime-detail">
+        <div className="rs-live-phase-strip">{phaseItems.map((phase, index) => {
+          const active = phase.key === phaseKey || (phase.key === "ai" && scan.status === "completed");
+          const completed = phase.key === "enumeration" && (phaseKey === "detectors" || phaseKey === "ai" || scan.status === "completed")
+            || phase.key === "detectors" && (phaseKey === "ai" || scan.status === "completed");
+          return <div key={phase.key} className={["rs-live-phase-chip", active ? "is-active" : "", completed ? "is-complete" : ""].filter(Boolean).join(" ")}><span>{index + 1}</span><strong>{phase.label}</strong></div>;
+        })}</div>
+        <div className="rs-live-runtime-card">
+          <span>{language === "vi" ? "Công đoạn" : "Stage"}</span>
+          <strong>{scan.currentStep || (language === "vi" ? "Đang xử lý" : "Processing")}</strong>
+        </div>
+        <div className="rs-live-runtime-grid">
+          {runtime?.currentDetector ? <div className="rs-live-runtime-stat"><span>{language === "vi" ? "Detector hiện tại" : "Current detector"}</span><strong>{formatDetectorLabel(runtime.currentDetector, language)}</strong></div> : null}
+          {detectorStepLabel ? <div className="rs-live-runtime-stat"><span>{language === "vi" ? "Bước detector" : "Detector step"}</span><strong>{detectorStepLabel}</strong></div> : null}
+          {detectorEtaSeconds ? <div className="rs-live-runtime-stat"><span>{language === "vi" ? "Ước tính còn lại" : "Estimated remaining"}</span><strong>{formatEtaSeconds(detectorEtaSeconds, language)}</strong></div> : null}
+          {runtime?.currentFile ? <div className="rs-live-runtime-stat is-wide"><span>{language === "vi" ? "Tệp đang xử lý" : "Current file"}</span><strong>{runtime.currentFile}</strong></div> : null}
+          <div className="rs-live-runtime-stat"><span>{language === "vi" ? "Tệp đã duyệt" : "Files scanned"}</span><strong>{formatNumber(runtime?.filesEnumerated ?? 0)}</strong></div>
+          <div className="rs-live-runtime-stat"><span>{language === "vi" ? "Thư mục" : "Directories"}</span><strong>{formatNumber(runtime?.directoriesEnumerated ?? 0)}</strong></div>
+          <div className="rs-live-runtime-stat"><span>{language === "vi" ? "Tệp text đã đọc" : "Text files read"}</span><strong>{formatNumber(runtime?.textFilesRead ?? 0)}</strong></div>
+          {typeof runtime?.throughputFilesPerSecond === "number" ? <div className="rs-live-runtime-stat"><span>{language === "vi" ? "Tốc độ" : "Throughput"}</span><strong>{formatNumber(Math.round(runtime.throughputFilesPerSecond))}/{language === "vi" ? "giây" : "sec"}</strong></div> : null}
+        </div>
+        {lastRuntimeLog ? <div className="rs-live-runtime-log"><span>{language === "vi" ? "Hoạt động gần nhất" : "Latest activity"}</span><strong>{lastRuntimeLog.message}</strong></div> : null}
+        {runtimeTimeline.length > 1 ? <div className="rs-live-runtime-timeline">{runtimeTimeline.map((entry, index) => <div key={`${entry.timestamp}-${index}`} className={["rs-live-runtime-event", `is-${entry.level}`].join(" ")}><span className="rs-live-runtime-dot" /><div className="rs-live-runtime-copy"><div className="rs-live-runtime-copy-top"><b>{entry.phase}</b><small>{new Date(entry.timestamp).toLocaleTimeString(language === "vi" ? "vi-VN" : "en-US")}</small></div><strong>{entry.message}</strong></div></div>)}</div> : null}
+      </div> : null}
       {metrics ? <div className="rs-live-stats-grid"><div className="rs-live-stat"><span>{copy.totalSize}</span><strong>{formatBytes(metrics.totalBytes)}</strong></div><div className="rs-live-stat"><span>{copy.textFiles}</span><strong>{formatNumber(metrics.textFileCount)}</strong></div><div className="rs-live-stat"><span>{copy.binaryLikeFiles}</span><strong>{formatNumber(metrics.binaryLikeFileCount)}</strong></div><div className="rs-live-stat"><span>{copy.totalLoc}</span><strong>{formatNumber(metrics.totalLoc)}</strong></div><div className="rs-live-stat"><span>{copy.totalTokens}</span><strong>{formatNumber(scan.tokenUsage?.total.totalTokens ?? 0)}</strong></div></div> : null}
       <div className={`rs-live-columns ${metrics ? "rs-live-columns-rich" : ""} ${showLargestFiles ? "" : "rs-live-columns-two"}`.trim()}>
         <div className="rs-live-col">
@@ -237,6 +300,9 @@ function renderExplanationSourceBadge(source: AiExplanationResponse["cacheSource
   const label = resolved === "db" ? copy.cacheDb : resolved === "rule" ? copy.cacheRule : copy.cacheAi;
   return <b className={`rs-origin-badge ${className}`.trim()}>{label}</b>;
 }
+
+
+
 
 
 

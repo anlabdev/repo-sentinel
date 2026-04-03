@@ -108,3 +108,52 @@ export function formatNumber(value?: number) {
 export function toMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
+
+export function formatDetectorLabel(value: string, language: UiLanguage = "en") {
+  const labels = language === "vi"
+    ? {
+        installHooksDetector: "Hook cài đặt",
+        suspiciousCommandDetector: "Lệnh thực thi đáng ngờ",
+        stagedPayloadDetector: "Tải ghi thực thi",
+        decodedPayloadExecutionDetector: "Giải mã ghi thực thi",
+        persistenceBehaviorDetector: "Dấu hiệu persistence",
+        exfiltrationDetector: "Exfiltration",
+        fragmentedAssemblyDetector: "Ghép mảnh dữ liệu",
+        secretExfilChainDetector: "Đọc secret rồi gửi ra ngoài",
+        encodedPayloadDetector: "Nội dung mã hóa",
+        workflowRiskDetector: "Rủi ro workflow",
+        keyMaterialDetector: "Key material",
+        secretPatternDetector: "Mẫu secret",
+        suspiciousFilenameDetector: "Tên tệp rủi ro",
+        binaryArtifactDetector: "Artifact nhị phân"
+      }
+    : {
+        installHooksDetector: "Install hooks",
+        suspiciousCommandDetector: "Suspicious command execution",
+        stagedPayloadDetector: "Download write execute",
+        decodedPayloadExecutionDetector: "Decode write execute",
+        persistenceBehaviorDetector: "Persistence behavior",
+        exfiltrationDetector: "Exfiltration",
+        fragmentedAssemblyDetector: "Fragment assembly",
+        secretExfilChainDetector: "Secret exfiltration chain",
+        encodedPayloadDetector: "Encoded payload",
+        workflowRiskDetector: "Workflow risk",
+        keyMaterialDetector: "Key material",
+        secretPatternDetector: "Secret patterns",
+        suspiciousFilenameDetector: "Filename risk",
+        binaryArtifactDetector: "Binary artifact"
+      };
+  return labels[value as keyof typeof labels] ?? value;
+}
+
+export function formatEtaSeconds(value?: number, language: UiLanguage = "en") {
+  if (!value || value <= 0) return language === "vi" ? "< 1 giây" : "< 1s";
+  if (value < 60) return language === "vi" ? String(value) + " giây" : String(value) + "s";
+  const minutes = Math.floor(value / 60);
+  const seconds = value % 60;
+  if (minutes < 60) return language === "vi" ? String(minutes) + " phút " + String(seconds) + " giây" : String(minutes) + "m " + String(seconds) + "s";
+  const hours = Math.floor(minutes / 60);
+  const remMinutes = minutes % 60;
+  return language === "vi" ? String(hours) + " giờ " + String(remMinutes) + " phút" : String(hours) + "h " + String(remMinutes) + "m";
+}
+
