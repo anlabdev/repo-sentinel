@@ -1470,27 +1470,34 @@ svg { width: 14px; height: 14px; }
 }
 
 .rs-finding-rich {
-  gap: 6px;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
 }
 
 .rs-finding-copy {
   display: grid;
-  gap: 3px;
-  margin-top: 6px;
+  gap: 5px;
+  margin-top: 8px;
 }
 
 .rs-finding-copy span {
   font-size: 9px;
-  color: var(--muted);
+  color: rgba(148, 163, 184, 0.82);
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.06em;
+  margin-top: 3px;
 }
 
 .rs-finding-copy em {
+  min-width: 0;
   font-style: normal;
   color: var(--text);
   font-size: 11px;
-  line-height: 1.45;
+  line-height: 1.58;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .rs-finding-copy code {
@@ -1508,9 +1515,9 @@ svg { width: 14px; height: 14px; }
 .rs-code-block {
   display: grid;
   gap: 0;
-  margin-top: 4px;
+  margin-top: 6px;
   border: 1px solid rgba(92, 122, 170, 0.12);
-  border-radius: 6px;
+  border-radius: 8px;
   background: rgba(10, 14, 20, 0.78);
   overflow: hidden;
 }
@@ -1544,7 +1551,7 @@ svg { width: 14px; height: 14px; }
 
 .rs-code-block code {
   display: grid;
-  gap: 2px;
+  gap: 3px;
   margin: 0;
   padding: 10px;
   border: 0;
@@ -1552,6 +1559,7 @@ svg { width: 14px; height: 14px; }
   background: rgba(7, 10, 16, 0.94);
   box-shadow: none;
   font-family: Geist Mono, ui-monospace, monospace;
+  line-height: 1.58;
   text-transform: none !important;
   letter-spacing: normal !important;
 }
@@ -1607,10 +1615,10 @@ svg { width: 14px; height: 14px; }
 
 .rs-detail-card {
   display: grid;
-  gap: 8px;
-  padding: 10px;
+  gap: 10px;
+  padding: 12px;
   border: 1px solid rgba(255, 255, 255, 0.04);
-  border-radius: 6px;
+  border-radius: 8px;
   background: rgba(9, 12, 18, 0.52);
 }
 
@@ -1678,22 +1686,22 @@ svg { width: 14px; height: 14px; }
 
 .rs-ai-sections {
   display: grid;
-  gap: 12px;
+  gap: 14px;
 }
 
 .rs-ai-section {
   background: var(--panel-soft);
   border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 10px;
+  border-radius: 8px;
+  padding: 12px 14px;
 }
 
 .rs-ai-section-head {
-  margin-bottom: 8px;
-  color: var(--muted);
+  margin-bottom: 10px;
+  color: rgba(148, 163, 184, 0.82);
   font-size: 9px;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.08em;
 }
 
 .rs-ai-detail-section {
@@ -1702,15 +1710,20 @@ svg { width: 14px; height: 14px; }
 
 .rs-ai-finding-detail {
   display: grid;
-  gap: 10px;
+  gap: 12px;
+  min-width: 0;
+}
+
+.rs-ai-finding-detail > * {
+  min-width: 0;
 }
 
 .rs-ai-section-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: 10px;
+  margin-bottom: 10px;
 }
 
 .rs-ai-section-header .rs-ai-section-head {
@@ -2437,13 +2450,98 @@ svg { width: 14px; height: 14px; }
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  margin: 8px 0 10px;
   font-size: 10px;
   color: rgba(212, 222, 240, 0.72);
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
 .rs-finding-group-head small {
   color: rgba(125, 152, 190, 0.72);
   font-size: 10px;
+}
+
+.rs-finding-copy > span:first-child {
+  margin-top: 0;
+}
+
+.rs-finding-copy > em + span {
+  margin-top: 7px;
+}
+
+.rs-ai-section > p {
+  margin: 0 0 10px;
+  line-height: 1.62;
+}
+
+@media (min-width: 960px) {
+  .rs-finding-copy-compact-meta,
+  .rs-finding-copy-detail,
+  .rs-finding-copy-triage {
+    grid-template-columns: minmax(96px, 120px) minmax(0, 1fr);
+    column-gap: 12px;
+    row-gap: 5px;
+    align-items: start;
+  }
+
+  .rs-finding-copy-compact-meta > :nth-child(n + 7),
+  .rs-finding-copy-detail > :nth-child(n + 13),
+  .rs-finding-copy-triage > :nth-child(n + 7) {
+    grid-column: 1 / -1;
+  }
+
+  .rs-finding-copy-compact-meta > :nth-child(7),
+  .rs-finding-copy-detail > :nth-child(13),
+  .rs-finding-copy-triage > :nth-child(7) {
+    margin-top: 9px;
+  }
+
+  .rs-finding-copy-compact-meta > em + span,
+  .rs-finding-copy-detail > em + span,
+  .rs-finding-copy-triage > em + span {
+    margin-top: 0;
+  }
+}
+
+
+.rs-finding-copy-compact-meta > em,
+.rs-finding-copy-detail > em,
+.rs-finding-copy-triage > em {
+  min-width: 0;
+}
+
+
+/* live scan long-snippet hard wrap override */
+.rs-ai-finding-detail,
+.rs-ai-finding-detail > *,
+.rs-code-block,
+.rs-code-block code,
+.rs-evidence-list,
+.rs-evidence-list em {
+  min-width: 0;
+}
+
+.rs-evidence-list em {
+  display: block;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.rs-code-line {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: start;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.rs-code-line > span {
+  display: block;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }

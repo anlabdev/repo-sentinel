@@ -98,7 +98,7 @@ export function LivePanel({
           <div className="rs-live-col-body">
             {enableCategoryFilter && scan.findings.length > 0 ? <div className="rs-category-filter-shell"><span>{copy.categoryFilter}</span><div className="rs-category-filter-row"><button type="button" className={activeCategory === "all" ? "is-active" : ""} onClick={() => setActiveCategory("all")}>{copy.categoryAll}</button>{findingCategories.map((category) => <button type="button" key={category} className={activeCategory === category ? "is-active" : ""} onClick={() => setActiveCategory(category)}>{formatCategoryLabel(category, language)}</button>)}</div></div> : null}
             <OverlayScrollArea className="rs-scroll-shell" viewportClassName="rs-col-list">
-              {groupedFindings.map((group) => <div className="rs-finding-group" key={group.category}><div className="rs-finding-group-head"><span>{enableCategoryFilter ? formatCategoryLabel(group.category, language) : copy.findings}</span><small>{group.items.length}</small></div>{group.items.slice(0, full ? 12 : 6).map((finding) => <button type="button" className={`rs-finding rs-finding-rich rs-finding-button ${selectedFinding?.id === finding.id ? "is-selected" : ""}`.trim()} key={finding.id} onClick={() => onSelectFinding?.(finding.id)}><b className={finding.severity}>{severityLabel(finding.severity, language)}</b><p>{finding.title}</p><small>{finding.filePath}{finding.lineNumber ? `:${finding.lineNumber}` : ""}</small><div className="rs-finding-copy"><span>{copy.ruleId}</span><em>{finding.ruleId}</em><span>{copy.category}</span><em>{formatCategoryLabel(finding.category, language)}</em><span>{copy.confidence}</span><em>{formatConfidence(finding.confidence)}</em><span>{copy.summary}</span><em>{finding.summary}</em><span>{copy.reasoning}</span><em>{finding.rationale}</em>{finding.falsePositiveNote ? <><span>{copy.falsePositive}</span><em>{finding.falsePositiveNote}</em></> : null}{finding.evidenceSnippet ? renderCodeBlock(copy.codeContext, finding.evidenceSnippet) : null}</div></button>)}</div>)}
+              {groupedFindings.map((group) => <div className="rs-finding-group" key={group.category}><div className="rs-finding-group-head"><span>{enableCategoryFilter ? formatCategoryLabel(group.category, language) : copy.findings}</span><small>{group.items.length}</small></div>{group.items.slice(0, full ? 12 : 6).map((finding) => <button type="button" className={`rs-finding rs-finding-rich rs-finding-button ${selectedFinding?.id === finding.id ? "is-selected" : ""}`.trim()} key={finding.id} onClick={() => onSelectFinding?.(finding.id)}><b className={finding.severity}>{severityLabel(finding.severity, language)}</b><p>{finding.title}</p><small>{finding.filePath}{finding.lineNumber ? `:${finding.lineNumber}` : ""}</small><div className="rs-finding-copy rs-finding-copy-compact-meta"><span>{copy.ruleId}</span><em>{finding.ruleId}</em><span>{copy.category}</span><em>{formatCategoryLabel(finding.category, language)}</em><span>{copy.confidence}</span><em>{formatConfidence(finding.confidence)}</em><span>{copy.summary}</span><em>{finding.summary}</em><span>{copy.reasoning}</span><em>{finding.rationale}</em>{finding.falsePositiveNote ? <><span>{copy.falsePositive}</span><em>{finding.falsePositiveNote}</em></> : null}{finding.evidenceSnippet ? renderCodeBlock(copy.codeContext, finding.evidenceSnippet) : null}</div></button>)}</div>)}
               {visibleFindings.length === 0 ? <div className="rs-col-empty">{copy.noFindingsYet}</div> : null}
             </OverlayScrollArea>
           </div>
@@ -183,8 +183,10 @@ export function LivePanel({
   );
 }
 
-function renderCodeBlock(label: string, snippet: string, toneClass = "") {
-  const lines = snippet.split(/\r?\n/);
+function renderCodeBlock(label: string, snippet: unknown, toneClass = "") {
+  const normalizedSnippet = normalizeSnippet(snippet);
+  if (!normalizedSnippet) return null;
+  const lines = normalizedSnippet.split(/\r?\n/);
 
   return <div className={["rs-code-block", toneClass].filter(Boolean).join(" ")}><div className="rs-code-block-head"><span>{label}</span></div><code>{lines.map((line, index) => {
     const isActive = line.startsWith("> ");
@@ -199,9 +201,30 @@ function renderEvidenceList(label: string, evidence: Array<{ label: string; valu
   return <div className="rs-finding-copy rs-evidence-list">{evidence.slice(0, 4).map((item, index) => <Fragment key={`${label}-${index}`}><span>{index === 0 ? label : item.label}</span><em>{item.label}: {item.value}</em></Fragment>)}</div>;
 }
 
+function normalizeSnippet(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeSnippet(item)).filter(Boolean).join("\n");
+  }
+  if (value && typeof value === "object") {
+    const candidate = value as { snippet?: unknown; text?: unknown; value?: unknown };
+    if ("snippet" in candidate) return normalizeSnippet(candidate.snippet);
+    if ("text" in candidate) return normalizeSnippet(candidate.text);
+    if ("value" in candidate) return normalizeSnippet(candidate.value);
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      return String(value);
+    }
+  }
+  if (value == null) return "";
+  return String(value);
+}
 function renderExplanationSourceBadge(source: AiExplanationResponse["cacheSource"] | undefined, copy: CopySet) {
   const resolved = source ?? "ai";
   const className = resolved === "db" ? "is-db" : resolved === "rule" ? "is-rule" : "is-ai";
   const label = resolved === "db" ? copy.cacheDb : resolved === "rule" ? copy.cacheRule : copy.cacheAi;
   return <b className={`rs-origin-badge ${className}`.trim()}>{label}</b>;
 }
+
+
